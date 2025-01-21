@@ -102,3 +102,10 @@ history.json
 # System files
 .DS_Store
 Thumbs.db
+
+# Ignore Python __pycache__ folders everywhere
+__pycache__/
+**/__pycache__/
+
+# Explicitly ignore __pycache__ under src
+src/__pycache__/
