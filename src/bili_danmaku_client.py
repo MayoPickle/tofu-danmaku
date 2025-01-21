@@ -35,7 +35,6 @@ class BiliDanmakuClient:
         while self.ws:
             try:
                 self.ws.send(self.create_heartbeat_packet(), ABNF.OPCODE_BINARY)
-                print("发送心跳包")
                 time.sleep(self.heartbeat_interval)
             except Exception:
                 break

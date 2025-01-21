@@ -25,7 +25,6 @@ def parse_message(self, data):
                     self.handle_danmaku(messages)
                 elif operation == 3:  # 心跳回复
                     popularity = int.from_bytes(body, "big")
-                    print(f"当前人气值: {popularity}")
             offset += packet_length
     except Exception:
         pass  # 忽略解析错误
