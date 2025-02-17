@@ -98,6 +98,7 @@ ipython_config.py
 
 # History file
 history.json
+config.json
 .danmaku_input_history
 
 # System files

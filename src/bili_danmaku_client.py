@@ -5,7 +5,8 @@ from websocket import ABNF
 
 from .fetch import fetch_server_info
 from .packet import create_handshake_packet, create_heartbeat_packet
-from .parser_handler import parse_message, handle_danmaku
+from .parser_handler import BiliMessageParser
+
 
 class BiliDanmakuClient:
     def __init__(self, room_id):
@@ -14,6 +15,7 @@ class BiliDanmakuClient:
         self.token = None       # 动态获取的 token
         self.ws = None
         self.heartbeat_interval = 30  # 心跳间隔时间（秒）
+        self.parser = BiliMessageParser(room_id)  # 初始化解析器
 
     def fetch_server_info(self):
         return fetch_server_info(self)
@@ -23,12 +25,6 @@ class BiliDanmakuClient:
 
     def create_heartbeat_packet(self):
         return create_heartbeat_packet()
-
-    def parse_message(self, data):
-        return parse_message(self, data)
-
-    def handle_danmaku(self, messages):
-        return handle_danmaku(self, messages)
 
     def send_heartbeat(self):
         """定时发送心跳包"""
@@ -40,20 +36,20 @@ class BiliDanmakuClient:
                 break
 
     def on_open(self, ws):
-        print("WebSocket 连接已建立")
+        print("✅ WebSocket 连接已建立")
         handshake_packet = self.create_handshake_packet()
         ws.send(handshake_packet, ABNF.OPCODE_BINARY)
-        print("认证包发送成功")
+        print("✅ 认证包发送成功")
         threading.Thread(target=self.send_heartbeat, daemon=True).start()
 
     def on_message(self, ws, message):
-        self.parse_message(message)
+        self.parser.parse_message(message)
 
     def on_error(self, ws, error):
-        print(f"WebSocket 错误: {error}")
+        print(f"❌ WebSocket 错误: {error}")
 
     def on_close(self, ws, close_status_code, close_msg):
-        print(f"WebSocket 连接已关闭，状态码: {close_status_code}, 原因: {close_msg}")
+        print(f"❌ WebSocket 连接已关闭，状态码: {close_status_code}, 原因: {close_msg}")
 
     def start(self):
         if not self.fetch_server_info():
@@ -71,4 +67,3 @@ class BiliDanmakuClient:
             ]
         )
         self.ws.run_forever()
-
