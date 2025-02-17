@@ -53,7 +53,7 @@ class BiliMessageParser:
     def keyword_detection(self, danmaku):
         """检测弹幕内容是否包含 '鱼豆腐' 并发送 POST 请求"""
         if "鱼豆腐" in danmaku:
-            post_url = "http://192.168.0.101:8081"
+            post_url = "http://192.168.0.101:8081/ticket"
             payload = {
                 "room_id": self.room_id,
                 "danmaku": danmaku
