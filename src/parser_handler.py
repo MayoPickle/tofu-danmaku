@@ -29,31 +29,41 @@ class PKBattleHandler:
         print("✅ PKBattleHandler 更新了 PK_INFO 信息")
 
     def delayed_check_230(self):
-        """3分50秒时检查：若参与者2的 votes > 100 且参与者1的 golds == 0，则触发 API并取消 4分50秒定时器"""
+        """3分50秒时检查：若对手 votes > 100 且 本房间 golds == 0，则触发 API 并取消 4分50秒定时器"""
         print("⏱️ 3分50秒延时检查开始")
         if self.pk_triggered:
             return
         if self.last_pk_info:
             try:
                 members = self.last_pk_info["data"]["members"]
-                participant1 = members[0]
-                participant2 = members[1]
-                golds1 = participant1.get("golds", 0)
-                votes2 = participant2.get("votes", 0)
-                if golds1 == 0 and votes2 > 100:
-                    print("❗ 3分50秒条件满足：参与者2的 votes > 100 且参与者1的 golds == 0，触发 API")
-                    self.pk_triggered = True
-                    self.cancel_timer_290()
-                    self.trigger_api()
-                else:
-                    print("✅ 3分50秒条件不满足，不触发 API")
+                self_participant = None
+                opponent = None
+
+                # 根据 room_id 动态确定参与者
+                for member in members:
+                    if member["room_id"] == self.room_id:
+                        self_participant = member
+                    else:
+                        opponent = member
+
+                if self_participant and opponent:
+                    golds_self = self_participant.get("golds", 0)
+                    votes_opponent = opponent.get("votes", 0)
+
+                    if golds_self == 0 and votes_opponent > 100:
+                        print("❗ 3分50秒条件满足：对手 votes > 100 且本房间 golds == 0，触发 API")
+                        self.pk_triggered = True
+                        self.cancel_timer_290()
+                        self.trigger_api()
+                    else:
+                        print("✅ 3分50秒条件不满足，不触发 API")
             except Exception as e:
                 print(f"❌ 3分50秒检查时出错: {e}")
         else:
             print("❗ 3分50秒未收到 PK_INFO，不触发 API")
 
     def delayed_check_290(self):
-        """4分50秒时检查：若参与者1的 golds == 0，则触发 API（前提是 3分50秒未触发）"""
+        """4分50秒时检查：若本房间 golds == 0，则触发 API（前提是 3分50秒未触发）"""
         print("⏱️ 4分50秒延时检查开始")
         if self.pk_triggered:
             return
@@ -63,14 +73,19 @@ class PKBattleHandler:
             self.trigger_api()
         else:
             try:
-                participant1 = self.last_pk_info["data"]["members"][0]
-                golds1 = participant1.get("golds", 0)
-                if golds1 == 0:
-                    print("❗ 4分50秒条件满足：参与者1的 golds == 0，触发 API")
-                    self.pk_triggered = True
-                    self.trigger_api()
-                else:
-                    print("✅ 4分50秒条件不满足，不触发 API")
+                members = self.last_pk_info["data"]["members"]
+                self_participant = next(
+                    (member for member in members if member["room_id"] == self.room_id), None
+                )
+
+                if self_participant:
+                    golds_self = self_participant.get("golds", 0)
+                    if golds_self == 0:
+                        print("❗ 4分50秒条件满足：本房间 golds == 0，触发 API")
+                        self.pk_triggered = True
+                        self.trigger_api()
+                    else:
+                        print("✅ 4分50秒条件不满足，不触发 API")
             except Exception as e:
                 print(f"❌ 4分50秒检查时出错: {e}")
                 self.pk_triggered = True
@@ -81,6 +96,14 @@ class PKBattleHandler:
         if self.timer_290:
             self.timer_290.cancel()
             print("✅ 已取消 4分50秒定时器")
+
+    def stop(self):
+        """停止定时器并销毁实例"""
+        if self.timer_230:
+            self.timer_230.cancel()
+        if self.timer_290:
+            self.timer_290.cancel()
+        print("🛑 定时器已取消，PKBattleHandler 实例销毁")
 
     def trigger_api(self):
         """触发 API，向 /pk_wanzun 发送 POST 请求"""
@@ -98,13 +121,12 @@ class PKBattleHandler:
                 print(f"❌ PK_BATTLE_PROCESS_NEW API 发送失败，HTTP 状态码: {response.status_code}")
         except requests.RequestException as e:
             print(f"❌ PK_BATTLE_PROCESS_NEW API 发送异常: {e}")
-        # 触发后不再做其它处理，此实例后续会随着引用消失而被销毁
+
 
 class BiliMessageParser:
     def __init__(self, room_id):
         self.room_id = room_id
         self.post_url = "http://192.168.0.101:8081"
-        # 当前的 PKBattleHandler（每次 PK_BATTLE_START_NEW 时创建新对象）
         self.current_pk_handler = None
 
     def parse_message(self, data):
@@ -118,17 +140,17 @@ class BiliMessageParser:
                 operation = int.from_bytes(data[offset + 8:offset + 12], "big")
                 body = data[offset + header_length:offset + packet_length]
 
-                if protover == 2:  # zlib 压缩消息
+                if protover == 2:
                     decompressed_data = zlib.decompress(body)
                     self.parse_message(decompressed_data)
-                elif protover == 3:  # brotli 压缩消息
+                elif protover == 3:
                     decompressed_data = brotli.decompress(body)
                     self.parse_message(decompressed_data)
-                elif protover in (0, 1):  # 普通消息
-                    if operation == 5:  # 弹幕消息或其他事件
+                elif protover in (0, 1):
+                    if operation == 5:
                         messages = json.loads(body.decode("utf-8"))
                         self.handle_danmaku(messages)
-                    elif operation == 3:  # 心跳回复
+                    elif operation == 3:
                         popularity = int.from_bytes(body, "big")
                 offset += packet_length
         except Exception as e:
@@ -145,13 +167,16 @@ class BiliMessageParser:
                     print(f"[{username}] {comment}")
                     self.keyword_detection(comment)
                 elif cmd == "PK_INFO":
-                    print("✅ 收到 PK_INFO 消息")
                     if self.current_pk_handler:
                         self.current_pk_handler.update_info(messages)
                 elif cmd == "PK_BATTLE_START_NEW":
                     print("✅ 收到 PK_BATTLE_START_NEW 消息")
-                    # 每次触发时创建一个新的 PKBattleHandler 对象，之前的对象不再引用，将自动销毁
                     self.current_pk_handler = PKBattleHandler(self.room_id, self.post_url)
+                elif cmd == "PK_BATTLE_END":
+                    print("🛑 收到 PK_BATTLE_END 消息，销毁 PKBattleHandler 实例")
+                    if self.current_pk_handler:
+                        self.current_pk_handler.stop()
+                        self.current_pk_handler = None
         except Exception as e:
             print(f"❌ 处理消息时发生错误: {e}")
 
