@@ -116,17 +116,11 @@ class PKBattleHandler:
         """触发 API"""
         post_url = f"{self.post_url}/pk_wanzun"
         
-        # 确保数据不为空
+        # 设置默认空数据
         if self.battle_type == 1:
-            if not self.last_battle_process:
-                print("❌ PK_BATTLE_PROCESS_NEW 数据缺失，无法触发 API")
-                return
-            pk_data = self.last_battle_process["data"]
+            pk_data = self.last_battle_process["data"] if self.last_battle_process else {}
         else:
-            if not self.last_pk_info:
-                print("❌ PK_INFO 数据缺失，无法触发 API")
-                return
-            pk_data = self.last_pk_info["data"]
+            pk_data = self.last_pk_info["data"] if self.last_pk_info else {}
 
         payload = {
             "room_id": self.room_id,
@@ -143,7 +137,6 @@ class PKBattleHandler:
                 print(f"❌ PK API 发送失败，HTTP 状态码: {response.status_code}")
         except requests.RequestException as e:
             print(f"❌ PK API 发送异常: {e}")
-
 
 
 class BiliMessageParser:
