@@ -44,11 +44,6 @@ def main():
         history_list = load_history()
         history_ids = [str(h["room_id"]) for h in history_list]
 
-        # 如果这个房间号不在历史里，添加到历史
-        if str(room_id) not in history_ids:
-            note = input("请给这个房间ID加个备注(可选，直接回车跳过)：").strip()
-            append_room_history(room_id, note if note else "")
-
         # 启动客户端
         client = BiliDanmakuClient(room_id)
         client.start()
