@@ -185,6 +185,9 @@ class BiliMessageParser:
                 elif cmd == "PK_INFO":
                     if self.current_pk_handler:
                         self.current_pk_handler.update_info(messages)
+                elif cmd == "PK_BATTLE_PROCESS_NEW":
+                    if self.current_pk_handler:
+                        self.current_pk_handler.update_battle_process(messages)
                 elif cmd == "PK_BATTLE_START_NEW":
                     print("✅ 收到 PK_BATTLE_START_NEW 消息")
                     battle_type = messages["data"].get("battle_type", 1)
