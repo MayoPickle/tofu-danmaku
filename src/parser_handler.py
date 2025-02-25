@@ -4,41 +4,72 @@ import brotli
 import requests
 import threading
 
+
 KEYWORDS = ["观测站", "鱼豆腐"]
 
+
 class PKBattleHandler:
-    def __init__(self, room_id, post_url, battle_type=1):
+    def __init__(self, room_id, post_url, battle_type):
         self.room_id = room_id
         self.post_url = post_url
+        self.battle_type = battle_type  # 新增：根据 PK 类型决定对比策略
         self.last_pk_info = None
+        self.last_battle_process = None
         self.pk_triggered = False
 
-        # 根据 battle_type 决定绝杀 PK 计时器时间
-        delay_time = 170 if battle_type == 2 else 230
-        self.final_strike_timer = threading.Timer(delay_time, self.delayed_final_strike_check)
-        self.end_timer = threading.Timer(290, self.delayed_end_check)
+        # 根据 battle_type 启动不同的计时器
+        if self.battle_type == 1:
+            self.kill_pk_timer = threading.Timer(170, self.delayed_check)
+        else:
+            self.kill_pk_timer = threading.Timer(170, self.delayed_check)
 
-        self.final_strike_timer.start()
+        self.end_timer = threading.Timer(290, self.end_check)
+        self.kill_pk_timer.start()
         self.end_timer.start()
+        print(f"✅ PKBattleHandler 初始化，battle_type={self.battle_type}，定时器已启动")
 
-        print(f"✅ PKBattleHandler 初始化，绝杀 PK 计时器={delay_time}s, 结束计时器=290s")
+    def update_battle_process(self, pk_battle_process_message):
+        """更新最新的 PK_BATTLE_PROCESS_NEW 消息"""
+        self.last_battle_process = pk_battle_process_message
+        print("✅ 更新了 PK_BATTLE_PROCESS_NEW 数据")
 
     def update_info(self, pk_info_message):
-        """更新最新的 PK_INFO 消息"""
+        """更新 PK_INFO 消息"""
         self.last_pk_info = pk_info_message
-        print("✅ PKBattleHandler 更新了 PK_INFO 信息")
+        print("✅ 更新了 PK_INFO 数据")
 
-    def delayed_final_strike_check(self):
-        """绝杀 PK 计时器：检查条件"""
-        print("⏱️ 绝杀 PK 计时器检查开始")
+    def delayed_check(self):
+        """根据 PK 类型和票数触发绝杀计时器（kill_pk_timer）"""
+        print("⏱️ 绝杀 PK 定时器触发")
         if self.pk_triggered:
             return
-        if self.last_pk_info:
-            try:
+
+        try:
+            if self.battle_type == 1 and self.last_battle_process:
+                init_votes = self.last_battle_process["data"]["init_info"]["votes"]
+                match_votes = self.last_battle_process["data"]["match_info"]["votes"]
+
+                # 根据当前房间判断对比对象
+                if self.room_id == self.last_battle_process["data"]["init_info"]["room_id"]:
+                    self_votes = init_votes
+                    opponent_votes = match_votes
+                else:
+                    self_votes = match_votes
+                    opponent_votes = init_votes
+
+                if self_votes == 0 and opponent_votes > 100:
+                    print("❗ 对手 votes > 100 且本房间 votes == 0，触发 API")
+                    self.pk_triggered = True
+                    self.cancel_end_timer()
+                    self.trigger_api()
+                else:
+                    print("✅ 绝杀条件不满足，不触发 API")
+            elif self.battle_type == 2 and self.last_pk_info:
                 members = self.last_pk_info["data"]["members"]
                 self_participant = None
                 opponent = None
 
+                # 根据房间号区分参与者
                 for member in members:
                     if member["room_id"] == self.room_id:
                         self_participant = member
@@ -48,47 +79,24 @@ class PKBattleHandler:
                 if self_participant and opponent:
                     golds_self = self_participant.get("golds", 0)
                     votes_opponent = opponent.get("votes", 0)
-
                     if golds_self == 0 and votes_opponent > 100:
-                        print("❗ 绝杀条件满足，触发 API")
+                        print("❗ 对手 votes > 100 且本房间 golds == 0，触发 API")
                         self.pk_triggered = True
                         self.cancel_end_timer()
                         self.trigger_api()
-                    else:
-                        print("✅ 绝杀条件不满足")
-            except Exception as e:
-                print(f"❌ 绝杀 PK 检查出错: {e}")
-        else:
-            print("❗ 未收到 PK_INFO，不触发 API")
+            else:
+                print("❌ 缺少必要数据，无法进行票数对比")
+        except Exception as e:
+            print(f"❌ 绝杀检查出错: {e}")
 
-    def delayed_end_check(self):
-        """结束计时器：检查条件"""
-        print("⏱️ 结束计时器检查开始")
+    def end_check(self):
+        """结束计时器逻辑"""
+        print("⏱️ 结束计时器触发")
         if self.pk_triggered:
             return
-        if not self.last_pk_info:
-            print("❗ 未收到 PK_INFO，触发 API")
-            self.pk_triggered = True
-            self.trigger_api()
-        else:
-            try:
-                members = self.last_pk_info["data"]["members"]
-                self_participant = next(
-                    (member for member in members if member["room_id"] == self.room_id), None
-                )
-
-                if self_participant:
-                    golds_self = self_participant.get("golds", 0)
-                    if golds_self == 0:
-                        print("❗ 结束条件满足，触发 API")
-                        self.pk_triggered = True
-                        self.trigger_api()
-                    else:
-                        print("✅ 结束条件不满足")
-            except Exception as e:
-                print(f"❌ 结束计时器检查出错: {e}")
-                self.pk_triggered = True
-                self.trigger_api()
+        print("❗ 结束条件触发，直接调用 API")
+        self.pk_triggered = True
+        self.trigger_api()
 
     def cancel_end_timer(self):
         """取消结束计时器"""
@@ -97,30 +105,30 @@ class PKBattleHandler:
             print("✅ 已取消结束计时器")
 
     def stop(self):
-        """停止所有定时器并销毁实例"""
-        if self.final_strike_timer:
-            self.final_strike_timer.cancel()
+        """销毁计时器"""
+        if self.kill_pk_timer:
+            self.kill_pk_timer.cancel()
         if self.end_timer:
             self.end_timer.cancel()
-        print("🛑 定时器已取消，PKBattleHandler 实例销毁")
+        print("🛑 停止计时器并销毁 PKBattleHandler 实例")
 
     def trigger_api(self):
-        """触发 API，向 /pk_wanzun 发送 POST 请求"""
+        """触发 API"""
         post_url = f"{self.post_url}/pk_wanzun"
         payload = {
             "room_id": self.room_id,
-            "pk_battle_process_new": self.last_pk_info["data"] if self.last_pk_info else {},
+            "battle_type": self.battle_type,
+            "pk_data": self.last_battle_process["data"] if self.battle_type == 1 else self.last_pk_info["data"],
             "token": "8096"
         }
         try:
             response = requests.post(post_url, json=payload, timeout=3)
             if response.status_code == 200:
-                print(f"✅ API 已成功发送至 {post_url}")
+                print(f"✅ PK API 已成功发送至 {post_url}")
             else:
-                print(f"❌ API 发送失败，HTTP 状态码: {response.status_code}")
+                print(f"❌ PK API 发送失败，HTTP 状态码: {response.status_code}")
         except requests.RequestException as e:
-            print(f"❌ API 发送异常: {e}")
-
+            print(f"❌ PK API 发送异常: {e}")
 
 
 class BiliMessageParser:
