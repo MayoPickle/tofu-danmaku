@@ -7,21 +7,21 @@ import threading
 KEYWORDS = ["观测站", "鱼豆腐"]
 
 class PKBattleHandler:
-    """
-    单次 PK 逻辑处理器，每次 PK_BATTLE_START_NEW 事件创建一个实例，
-    内部启动两个定时器分别在 230 秒和 290 秒时检查 PK_INFO 状态，
-    满足条件则触发 API，触发后内部状态置为已激活。
-    """
-    def __init__(self, room_id, post_url):
+    def __init__(self, room_id, post_url, battle_type=1):
         self.room_id = room_id
         self.post_url = post_url
         self.last_pk_info = None
         self.pk_triggered = False
-        self.timer_230 = threading.Timer(230, self.delayed_check_230)
+
+        # 根据 battle_type 决定 timer_230 的时间
+        delay_time = 170 if battle_type == 2 else 230
+        self.timer_230 = threading.Timer(delay_time, self.delayed_check_230)
         self.timer_290 = threading.Timer(290, self.delayed_check_290)
+
         self.timer_230.start()
         self.timer_290.start()
-        print("✅ PKBattleHandler 初始化，定时器已启动")
+
+        print(f"✅ PKBattleHandler 初始化，定时器已启动 (battle_type={battle_type}, delay_time={delay_time}s)")
 
     def update_info(self, pk_info_message):
         """更新最新的 PK_INFO 消息"""
@@ -29,8 +29,8 @@ class PKBattleHandler:
         print("✅ PKBattleHandler 更新了 PK_INFO 信息")
 
     def delayed_check_230(self):
-        """3分50秒时检查：若对手 votes > 100 且 本房间 golds == 0，则触发 API 并取消 4分50秒定时器"""
-        print("⏱️ 3分50秒延时检查开始")
+        """3分50秒或 170 秒检查逻辑"""
+        print("⏱️ 延时检查开始")
         if self.pk_triggered:
             return
         if self.last_pk_info:
@@ -39,7 +39,6 @@ class PKBattleHandler:
                 self_participant = None
                 opponent = None
 
-                # 根据 room_id 动态确定参与者
                 for member in members:
                     if member["room_id"] == self.room_id:
                         self_participant = member
@@ -51,24 +50,24 @@ class PKBattleHandler:
                     votes_opponent = opponent.get("votes", 0)
 
                     if golds_self == 0 and votes_opponent > 100:
-                        print("❗ 3分50秒条件满足：对手 votes > 100 且本房间 golds == 0，触发 API")
+                        print("❗ 条件满足，触发 API")
                         self.pk_triggered = True
                         self.cancel_timer_290()
                         self.trigger_api()
                     else:
-                        print("✅ 3分50秒条件不满足，不触发 API")
+                        print("✅ 条件不满足")
             except Exception as e:
-                print(f"❌ 3分50秒检查时出错: {e}")
+                print(f"❌ 延时检查出错: {e}")
         else:
-            print("❗ 3分50秒未收到 PK_INFO，不触发 API")
+            print("❗ 未收到 PK_INFO，不触发 API")
 
     def delayed_check_290(self):
-        """4分50秒时检查：若本房间 golds == 0，则触发 API（前提是 3分50秒未触发）"""
+        """4分50秒检查逻辑"""
         print("⏱️ 4分50秒延时检查开始")
         if self.pk_triggered:
             return
         if not self.last_pk_info:
-            print("❗ 4分50秒未收到 PK_INFO，触发 API")
+            print("❗ 未收到 PK_INFO，触发 API")
             self.pk_triggered = True
             self.trigger_api()
         else:
@@ -81,13 +80,13 @@ class PKBattleHandler:
                 if self_participant:
                     golds_self = self_participant.get("golds", 0)
                     if golds_self == 0:
-                        print("❗ 4分50秒条件满足：本房间 golds == 0，触发 API")
+                        print("❗ 条件满足，触发 API")
                         self.pk_triggered = True
                         self.trigger_api()
                     else:
-                        print("✅ 4分50秒条件不满足，不触发 API")
+                        print("✅ 条件不满足")
             except Exception as e:
-                print(f"❌ 4分50秒检查时出错: {e}")
+                print(f"❌ 4分50秒检查出错: {e}")
                 self.pk_triggered = True
                 self.trigger_api()
 
@@ -116,11 +115,11 @@ class PKBattleHandler:
         try:
             response = requests.post(post_url, json=payload, timeout=3)
             if response.status_code == 200:
-                print(f"✅ PK_BATTLE_PROCESS_NEW API 已成功发送至 {post_url}")
+                print(f"✅ API 已成功发送至 {post_url}")
             else:
-                print(f"❌ PK_BATTLE_PROCESS_NEW API 发送失败，HTTP 状态码: {response.status_code}")
+                print(f"❌ API 发送失败，HTTP 状态码: {response.status_code}")
         except requests.RequestException as e:
-            print(f"❌ PK_BATTLE_PROCESS_NEW API 发送异常: {e}")
+            print(f"❌ API 发送异常: {e}")
 
 
 class BiliMessageParser:
