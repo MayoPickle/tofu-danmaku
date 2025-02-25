@@ -13,24 +13,24 @@ class PKBattleHandler:
         self.last_pk_info = None
         self.pk_triggered = False
 
-        # 根据 battle_type 决定 timer_230 的时间
+        # 根据 battle_type 决定绝杀 PK 计时器时间
         delay_time = 170 if battle_type == 2 else 230
-        self.timer_230 = threading.Timer(delay_time, self.delayed_check_230)
-        self.timer_290 = threading.Timer(290, self.delayed_check_290)
+        self.final_strike_timer = threading.Timer(delay_time, self.delayed_final_strike_check)
+        self.end_timer = threading.Timer(290, self.delayed_end_check)
 
-        self.timer_230.start()
-        self.timer_290.start()
+        self.final_strike_timer.start()
+        self.end_timer.start()
 
-        print(f"✅ PKBattleHandler 初始化，定时器已启动 (battle_type={battle_type}, delay_time={delay_time}s)")
+        print(f"✅ PKBattleHandler 初始化，绝杀 PK 计时器={delay_time}s, 结束计时器=290s")
 
     def update_info(self, pk_info_message):
         """更新最新的 PK_INFO 消息"""
         self.last_pk_info = pk_info_message
         print("✅ PKBattleHandler 更新了 PK_INFO 信息")
 
-    def delayed_check_230(self):
-        """3分50秒或 170 秒检查逻辑"""
-        print("⏱️ 延时检查开始")
+    def delayed_final_strike_check(self):
+        """绝杀 PK 计时器：检查条件"""
+        print("⏱️ 绝杀 PK 计时器检查开始")
         if self.pk_triggered:
             return
         if self.last_pk_info:
@@ -50,20 +50,20 @@ class PKBattleHandler:
                     votes_opponent = opponent.get("votes", 0)
 
                     if golds_self == 0 and votes_opponent > 100:
-                        print("❗ 条件满足，触发 API")
+                        print("❗ 绝杀条件满足，触发 API")
                         self.pk_triggered = True
-                        self.cancel_timer_290()
+                        self.cancel_end_timer()
                         self.trigger_api()
                     else:
-                        print("✅ 条件不满足")
+                        print("✅ 绝杀条件不满足")
             except Exception as e:
-                print(f"❌ 延时检查出错: {e}")
+                print(f"❌ 绝杀 PK 检查出错: {e}")
         else:
             print("❗ 未收到 PK_INFO，不触发 API")
 
-    def delayed_check_290(self):
-        """4分50秒检查逻辑"""
-        print("⏱️ 4分50秒延时检查开始")
+    def delayed_end_check(self):
+        """结束计时器：检查条件"""
+        print("⏱️ 结束计时器检查开始")
         if self.pk_triggered:
             return
         if not self.last_pk_info:
@@ -80,28 +80,28 @@ class PKBattleHandler:
                 if self_participant:
                     golds_self = self_participant.get("golds", 0)
                     if golds_self == 0:
-                        print("❗ 条件满足，触发 API")
+                        print("❗ 结束条件满足，触发 API")
                         self.pk_triggered = True
                         self.trigger_api()
                     else:
-                        print("✅ 条件不满足")
+                        print("✅ 结束条件不满足")
             except Exception as e:
-                print(f"❌ 4分50秒检查出错: {e}")
+                print(f"❌ 结束计时器检查出错: {e}")
                 self.pk_triggered = True
                 self.trigger_api()
 
-    def cancel_timer_290(self):
-        """取消 4分50秒定时器"""
-        if self.timer_290:
-            self.timer_290.cancel()
-            print("✅ 已取消 4分50秒定时器")
+    def cancel_end_timer(self):
+        """取消结束计时器"""
+        if self.end_timer:
+            self.end_timer.cancel()
+            print("✅ 已取消结束计时器")
 
     def stop(self):
-        """停止定时器并销毁实例"""
-        if self.timer_230:
-            self.timer_230.cancel()
-        if self.timer_290:
-            self.timer_290.cancel()
+        """停止所有定时器并销毁实例"""
+        if self.final_strike_timer:
+            self.final_strike_timer.cancel()
+        if self.end_timer:
+            self.end_timer.cancel()
         print("🛑 定时器已取消，PKBattleHandler 实例销毁")
 
     def trigger_api(self):
@@ -120,6 +120,7 @@ class PKBattleHandler:
                 print(f"❌ API 发送失败，HTTP 状态码: {response.status_code}")
         except requests.RequestException as e:
             print(f"❌ API 发送异常: {e}")
+
 
 
 class BiliMessageParser:
@@ -170,7 +171,10 @@ class BiliMessageParser:
                         self.current_pk_handler.update_info(messages)
                 elif cmd == "PK_BATTLE_START_NEW":
                     print("✅ 收到 PK_BATTLE_START_NEW 消息")
-                    self.current_pk_handler = PKBattleHandler(self.room_id, self.post_url)
+                    battle_type = messages["data"].get("battle_type", 1)
+                    self.current_pk_handler = PKBattleHandler(
+                        self.room_id, self.post_url, battle_type
+                    )
                 elif cmd == "PK_BATTLE_END":
                     print("🛑 收到 PK_BATTLE_END 消息，销毁 PKBattleHandler 实例")
                     if self.current_pk_handler:
