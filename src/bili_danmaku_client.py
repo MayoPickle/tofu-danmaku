@@ -9,13 +9,14 @@ from .parser_handler import BiliMessageParser
 
 
 class BiliDanmakuClient:
-    def __init__(self, room_id):
+    def __init__(self, room_id, spider=False):
         self.room_id = room_id  # 房间号
+        self.spider = spider    # 是否启用爬虫功能
         self.ws_url = None      # WebSocket 地址
         self.token = None       # 动态获取的 token
         self.ws = None
         self.heartbeat_interval = 30  # 心跳间隔时间（秒）
-        self.parser = BiliMessageParser(room_id)  # 初始化解析器
+        self.parser = BiliMessageParser(room_id, spider=spider)  # 初始化解析器，传入spider参数
 
     def fetch_server_info(self):
         return fetch_server_info(self)

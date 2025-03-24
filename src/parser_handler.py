@@ -321,10 +321,14 @@ class PKBattleHandler:
 
 
 class BiliMessageParser:
-    def __init__(self, room_id):
+    def __init__(self, room_id, spider=False):
         self.room_id = room_id
         self.post_url = "http://192.168.0.101:8081"
         self.current_pk_handler = None
+        self.spider_enabled = spider
+        
+        if self.spider_enabled:
+            print(f"🕷️ 直播间爬虫功能已启用，将监听 STOP_LIVE_ROOM_LIST 消息")
 
     def parse_message(self, data):
         """解析服务器返回的消息"""
@@ -380,8 +384,28 @@ class BiliMessageParser:
                     if self.current_pk_handler:
                         self.current_pk_handler.stop()
                         self.current_pk_handler = None
+                elif cmd == "STOP_LIVE_ROOM_LIST" and self.spider_enabled:
+                    print("📋 收到 STOP_LIVE_ROOM_LIST 消息")
+                    self.handle_stop_live_room_list(messages)
         except Exception as e:
             print(f"❌ 处理消息时发生错误: {e}")
+
+    def handle_stop_live_room_list(self, messages):
+        """处理 STOP_LIVE_ROOM_LIST 消息并发送到指定 API"""
+        post_url = f"{self.post_url}/live_room_spider"
+        try:
+            payload = {
+                "room_id": self.room_id,
+                "stop_live_room_list": messages.get("data", {})
+            }
+            
+            response = requests.post(post_url, json=payload, timeout=3)
+            if response.status_code == 200:
+                print(f"✅ STOP_LIVE_ROOM_LIST 已成功发送至 {post_url}")
+            else:
+                print(f"❌ STOP_LIVE_ROOM_LIST 发送失败，HTTP 状态码: {response.status_code}")
+        except requests.RequestException as e:
+            print(f"❌ STOP_LIVE_ROOM_LIST 发送异常: {e}")
 
     def keyword_detection(self, danmaku):
         """检测弹幕内容是否包含关键字并发送 POST 请求"""

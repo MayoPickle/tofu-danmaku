@@ -8,7 +8,7 @@ import argparse
 from src.bili_danmaku_client import BiliDanmakuClient
 from src.room_history import load_history, append_room_history, show_history
 
-# 准备一个专门用于存储“脚本内部输入历史”（并非房间号历史）的文件
+# 准备一个专门用于存储"脚本内部输入历史"（并非房间号历史）的文件
 READLINE_HISTORY = ".danmaku_input_history"
 
 def load_readline_history():
@@ -24,10 +24,11 @@ def get_arguments():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="Bili Danmaku Client")
     parser.add_argument('--room-id', type=int, help='直接传入房间号启动，不显示房间历史列表')
+    parser.add_argument('--spider', action='store_true', help='启用直播间爬虫功能，监听STOP_LIVE_ROOM_LIST消息')
     return parser.parse_args()
 
 def main():
-    # 启动时先加载“脚本内部输入历史”
+    # 启动时先加载"脚本内部输入历史"
     load_readline_history()
     # 程序退出时自动保存
     atexit.register(save_readline_history)
@@ -39,13 +40,16 @@ def main():
     if args.room_id:
         room_id = args.room_id
         print(f"已通过命令行传入房间号：{room_id}，即将开始连接。")
+        
+        if args.spider:
+            print("🕷️ 直播间爬虫功能已启用")
 
         # 载入已保存的房间号历史
         history_list = load_history()
         history_ids = [str(h["room_id"]) for h in history_list]
 
         # 启动客户端
-        client = BiliDanmakuClient(room_id)
+        client = BiliDanmakuClient(room_id, spider=args.spider)
         client.start()
         return  # 启动后直接退出函数
 
@@ -76,8 +80,12 @@ def main():
         note = input("请给这个房间ID加个备注(可选，直接回车跳过)：").strip()
         append_room_history(room_id, note if note else "")
 
+    # 显示爬虫状态
+    if args.spider:
+        print("🕷️ 直播间爬虫功能已启用")
+        
     # 启动客户端
-    client = BiliDanmakuClient(room_id)
+    client = BiliDanmakuClient(room_id, spider=args.spider)
     client.start()
 
 
