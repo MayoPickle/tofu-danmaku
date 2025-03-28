@@ -387,6 +387,9 @@ class BiliMessageParser:
                 elif cmd == "STOP_LIVE_ROOM_LIST" and self.spider_enabled:
                     print("📋 收到 STOP_LIVE_ROOM_LIST 消息")
                     self.handle_stop_live_room_list(messages)
+                elif cmd == "SEND_GIFT":
+                    print("🎁 收到 SEND_GIFT 消息")
+                    self.handle_send_gift(messages)
         except Exception as e:
             print(f"❌ 处理消息时发生错误: {e}")
 
@@ -423,3 +426,43 @@ class BiliMessageParser:
                     print(f"❌ 发送失败，HTTP 状态码: {response.status_code}")
             except requests.RequestException as e:
                 print(f"❌ 发送失败，错误: {e}")
+                
+    def handle_send_gift(self, messages):
+        """处理礼物消息并发送到指定 API"""
+        try:
+            data = messages.get("data", {})
+            
+            # 提取送礼信息
+            uid = data.get("uid", 0)
+            uname = data.get("uname", "")
+            gift_id = data.get("giftId", 0)
+            gift_name = data.get("giftName", "")
+            price = data.get("price", 0)
+            
+            # 如果有 sender_uinfo 就从那里获取更详细的用户信息
+            if "sender_uinfo" in data and "base" in data["sender_uinfo"]:
+                sender_base = data["sender_uinfo"]["base"]
+                uid = data["sender_uinfo"].get("uid", uid)
+                uname = sender_base.get("name", uname)
+            
+            # 打印礼物信息
+            print(f"🎁 礼物: [{uname}] 赠送 [{gift_name}] x1, 价值: {price}")
+            
+            # 发送到 /money 接口
+            post_url = f"{self.post_url}/money"
+            payload = {
+                "room_id": self.room_id,
+                "uid": uid,
+                "uname": uname,
+                "gift_id": gift_id,
+                "gift_name": gift_name,
+                "price": price
+            }
+            
+            response = requests.post(post_url, json=payload, timeout=3)
+            if response.status_code == 200:
+                print(f"✅ 礼物信息已成功发送至 {post_url}")
+            else:
+                print(f"❌ 礼物信息发送失败，HTTP 状态码: {response.status_code}")
+        except Exception as e:
+            print(f"❌ 处理礼物消息时发生错误: {e}")
