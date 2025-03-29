@@ -367,6 +367,10 @@ class BiliMessageParser:
                     username = messages["info"][2][1]
                     print(f"[{username}] {comment}")
                     self.keyword_detection(comment)
+                    
+                    # 检测是否包含"记仇机器人"
+                    if "记仇机器人" in comment:
+                        self.send_to_setting(comment)
                 elif cmd == "PK_INFO":
                     if self.current_pk_handler:
                         self.current_pk_handler.update_info(messages)
@@ -426,6 +430,22 @@ class BiliMessageParser:
                     print(f"❌ 发送失败，HTTP 状态码: {response.status_code}")
             except requests.RequestException as e:
                 print(f"❌ 发送失败，错误: {e}")
+                
+    def send_to_setting(self, danmaku):
+        """将包含"记仇机器人"的弹幕发送到 /setting 接口"""
+        post_url = f"{self.post_url}/setting"
+        payload = {
+            "room_id": self.room_id,
+            "danmaku": danmaku
+        }
+        try:
+            response = requests.post(post_url, json=payload, timeout=3)
+            if response.status_code == 200:
+                print(f"✅ 记仇机器人指令：'{danmaku}' 已发送至 {post_url}")
+            else:
+                print(f"❌ 发送失败，HTTP 状态码: {response.status_code}")
+        except requests.RequestException as e:
+            print(f"❌ 发送失败，错误: {e}")
                 
     def handle_send_gift(self, messages):
         """处理礼物消息并发送到指定 API"""
