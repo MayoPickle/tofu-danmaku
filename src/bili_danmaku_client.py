@@ -16,7 +16,7 @@ class BiliDanmakuClient:
         self.token = None       # 动态获取的 token 
         self.ws = None
         self.heartbeat_interval = 30  # 心跳间隔时间（秒）
-        self.parser = BiliMessageParser(room_id, spider=spider)  # 初始化解析器，传入spider参数
+        self.parser = BiliMessageParser(room_id, spider=bool(spider))
 
     def fetch_server_info(self):
         return fetch_server_info(self)
