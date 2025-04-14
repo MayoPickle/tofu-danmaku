@@ -21,8 +21,9 @@ logger = logging.getLogger(__name__)
 class Constants:
     DEFAULT_TIMEOUT = 3
     DEFAULT_API_TOKEN = "8096"
-    KEYWORDS = ["观测站", "鱼豆腐"]
+    KEYWORDS = ["观测站"]
     ROBOT_KEYWORD = "记仇机器人"
+    CHATBOT_KEYWORD = "鱼豆腐"
     
     # PK 相关常量
     PK_TYPE_1 = 1
@@ -353,19 +354,35 @@ class DanmakuHandler(EventHandler):
             # 关键词检测
             self._keyword_detection(comment)
             
+            # 鱼豆腐关键词检测（chatbot功能）
+            self._chatbot_detection(comment)
+            
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
                 self._send_to_setting(comment)
     
     def _keyword_detection(self, danmaku: str) -> None:
-        """检测弹幕内容是否包含关键字并发送 POST 请求"""
+        """检测弹幕内容是否包含关键字并发送 POST 请求到 ticket 接口"""
         if any(keyword in danmaku for keyword in Constants.KEYWORDS):
             payload = {
                 "room_id": self.room_id,
                 "danmaku": danmaku
             }
             if self.api_client.post("ticket", payload):
-                logger.info(f"✅ 关键字检测成功：'{danmaku}' 已发送")
+                logger.info(f"✅ 关键字检测成功：'{danmaku}' 已发送至 ticket 接口")
+    
+    def _chatbot_detection(self, danmaku: str) -> None:
+        """检测弹幕内容是否包含'鱼豆腐'关键词并发送到 chatbot 接口"""
+        if Constants.CHATBOT_KEYWORD in danmaku:
+            logger.info(f"🤖 检测到'{Constants.CHATBOT_KEYWORD}'关键词：'{danmaku}'")
+            chatbot_payload = {
+                "room_id": str(self.room_id),
+                "message": danmaku
+            }
+            if self.api_client.post("chatbot", chatbot_payload):
+                logger.info(f"✅ 已将消息 '{danmaku}' 发送到 chatbot 接口")
+            else:
+                logger.error(f"❌ 消息 '{danmaku}' 发送到 chatbot 接口失败")
     
     def _send_to_setting(self, danmaku: str) -> None:
         """将包含"记仇机器人"的弹幕发送到 /setting 接口"""
