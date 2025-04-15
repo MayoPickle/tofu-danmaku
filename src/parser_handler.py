@@ -25,11 +25,6 @@ class Constants:
     ROBOT_KEYWORD = "记仇机器人"
     CHATBOT_KEYWORD = "鱼豆腐"
     
-    # 聊天机器人上下文设置
-    CHATBOT_CONTEXT_ENABLED = True  # 是否启用上下文记忆
-    CHATBOT_CONTEXT_SIZE = 600  # 记忆的最大消息数量
-    CHATBOT_CONTEXT_TIMEOUT = 7200  # 上下文过期时间（秒），2小时
-    
     # PK 相关常量
     PK_TYPE_1 = 1
     PK_TYPE_2 = 2
@@ -347,12 +342,6 @@ class DanmakuHandler(EventHandler):
     def __init__(self, room_id: int, api_client: APIClient):
         self.room_id = room_id
         self.api_client = api_client
-        # 初始化聊天上下文缓存 {room_id: [(时间戳, 用户名, 消息内容), ...]}
-        self.chat_contexts = {}
-        # 清理过期上下文的定时器
-        self.context_cleanup_timer = threading.Timer(60.0, self._cleanup_expired_contexts)
-        self.context_cleanup_timer.daemon = True
-        self.context_cleanup_timer.start()
     
     def handle(self, message: Dict[str, Any]) -> None:
         """处理弹幕消息"""
@@ -366,7 +355,7 @@ class DanmakuHandler(EventHandler):
             self._keyword_detection(comment)
             
             # 鱼豆腐关键词检测（chatbot功能）
-            self._chatbot_detection(comment, username)
+            self._chatbot_detection(comment)
             
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
@@ -382,128 +371,18 @@ class DanmakuHandler(EventHandler):
             if self.api_client.post("ticket", payload):
                 logger.info(f"✅ 关键字检测成功：'{danmaku}' 已发送至 ticket 接口")
     
-    def _chatbot_detection(self, danmaku: str, username: str) -> None:
-        """检测弹幕内容是否包含'鱼豆腐'关键词并发送到 chatbot 接口，支持直播间上下文记忆"""
+    def _chatbot_detection(self, danmaku: str) -> None:
+        """检测弹幕内容是否包含'鱼豆腐'关键词并发送到 chatbot 接口"""
         if Constants.CHATBOT_KEYWORD in danmaku:
             logger.info(f"🤖 检测到'{Constants.CHATBOT_KEYWORD}'关键词：'{danmaku}'")
-            
-            # 构建基本 payload
             chatbot_payload = {
                 "room_id": str(self.room_id),
-                "message": danmaku,
-                "username": username
+                "message": danmaku
             }
-            
-            # 添加上下文信息（如果启用）
-            if Constants.CHATBOT_CONTEXT_ENABLED:
-                logger.info(f"✅ 上下文记忆功能已启用，将为请求添加上下文")
-                # 更新直播间的上下文
-                self._update_room_context(username, danmaku)
-                
-                # 获取并添加上下文到请求
-                context = self._get_room_context()
-                if context:
-                    chatbot_payload["context"] = context
-                    logger.info(f"📚 为直播间 {self.room_id} 添加了 {len(context)} 条上下文消息")
-                else:
-                    logger.warning(f"⚠️ 未能获取到上下文消息")
-            else:
-                logger.info(f"ℹ️ 上下文记忆功能未启用")
-            
-            # 发送请求前记录完整的 payload 大小
-            import json
-            payload_size = len(json.dumps(chatbot_payload))
-            logger.info(f"📦 准备发送请求：payload大小约为 {payload_size/1024:.2f} KB")
-            
-            # 发送请求
             if self.api_client.post("chatbot", chatbot_payload):
                 logger.info(f"✅ 已将消息 '{danmaku}' 发送到 chatbot 接口")
             else:
                 logger.error(f"❌ 消息 '{danmaku}' 发送到 chatbot 接口失败")
-    
-    def _update_room_context(self, username: str, message: str) -> None:
-        """更新直播间的对话上下文"""
-        import time
-        current_time = time.time()
-        
-        # 初始化该直播间的上下文缓存（如果不存在）
-        if self.room_id not in self.chat_contexts:
-            self.chat_contexts[self.room_id] = []
-            logger.info(f"🔧 为直播间 {self.room_id} 创建新的上下文缓存")
-        
-        # 添加新消息（包含用户名）
-        self.chat_contexts[self.room_id].append((current_time, username, message))
-        logger.info(f"📝 添加消息到上下文: 房间={self.room_id}, 用户={username}, 消息='{message}'")
-        logger.info(f"📊 当前上下文长度: {len(self.chat_contexts[self.room_id])}")
-        
-        # 如果超出最大消息数量，删除最早的消息
-        if len(self.chat_contexts[self.room_id]) > Constants.CHATBOT_CONTEXT_SIZE:
-            removed = len(self.chat_contexts[self.room_id]) - Constants.CHATBOT_CONTEXT_SIZE
-            self.chat_contexts[self.room_id] = self.chat_contexts[self.room_id][-Constants.CHATBOT_CONTEXT_SIZE:]
-            logger.info(f"⚠️ 上下文已达到最大限制，移除了 {removed} 条最早的消息")
-    
-    def _get_room_context(self) -> List[Dict[str, str]]:
-        """获取直播间的对话上下文消息，格式化为 OpenAI API 兼容的格式"""
-        if self.room_id not in self.chat_contexts:
-            logger.warning(f"⚠️ 尝试获取不存在的上下文，房间ID={self.room_id}")
-            return []
-        
-        # 返回 OpenAI API 兼容的上下文格式
-        # 每个消息包含 role 和 content 字段
-        messages = []
-        for _, username, msg in self.chat_contexts[self.room_id]:
-            # 用户发送的消息
-            messages.append({
-                "role": "user",
-                "content": f"{username}: {msg}"
-            })
-        
-        logger.info(f"🔍 获取上下文消息 - 房间={self.room_id}, 消息数量={len(messages)}")
-        # 打印部分上下文内容进行调试（最多显示3条，避免日志过长）
-        display_count = min(3, len(messages))
-        if display_count > 0:
-            logger.info(f"🔍 上下文预览（显示最新的{display_count}条）:")
-            for i in range(1, display_count + 1):
-                msg = messages[-i]
-                logger.info(f"  📄 {i}. {msg['content'][:50]}{'...' if len(msg['content']) > 50 else ''}")
-            
-        return messages
-    
-    def _cleanup_expired_contexts(self) -> None:
-        """清理过期的上下文记忆"""
-        import time
-        current_time = time.time()
-        expiration_time = current_time - Constants.CHATBOT_CONTEXT_TIMEOUT
-        
-        total_messages_before = sum(len(msgs) for msgs in self.chat_contexts.values())
-        rooms_before = len(self.chat_contexts)
-        
-        for room_id in list(self.chat_contexts.keys()):
-            # 过滤掉过期的消息
-            original_count = len(self.chat_contexts[room_id])
-            valid_messages = [(t, user, msg) for t, user, msg in self.chat_contexts[room_id] if t > expiration_time]
-            expired_count = original_count - len(valid_messages)
-            
-            if expired_count > 0:
-                logger.info(f"🧹 房间 {room_id} 清理了 {expired_count} 条过期消息")
-            
-            if valid_messages:
-                self.chat_contexts[room_id] = valid_messages
-            else:
-                # 如果所有消息都过期了，删除该直播间的上下文
-                del self.chat_contexts[room_id]
-                logger.info(f"🧹 房间 {room_id} 的所有消息都已过期，删除该房间的上下文缓存")
-        
-        total_messages_after = sum(len(msgs) for msgs in self.chat_contexts.values())
-        rooms_after = len(self.chat_contexts)
-        
-        # 重新设置定时器
-        self.context_cleanup_timer = threading.Timer(60.0, self._cleanup_expired_contexts)
-        self.context_cleanup_timer.daemon = True
-        self.context_cleanup_timer.start()
-        
-        if total_messages_before != total_messages_after or rooms_before != rooms_after:
-            logger.info(f"🧹 清理完成: 直播间数 {rooms_before} → {rooms_after}, 消息总数 {total_messages_before} → {total_messages_after}")
     
     def _send_to_setting(self, danmaku: str) -> None:
         """将包含"记仇机器人"的弹幕发送到 /setting 接口"""
@@ -516,9 +395,7 @@ class DanmakuHandler(EventHandler):
     
     def stop(self) -> None:
         """停止处理器"""
-        if hasattr(self, 'context_cleanup_timer') and self.context_cleanup_timer:
-            self.context_cleanup_timer.cancel()
-            logger.info("🛑 停止并销毁上下文清理定时器")
+        pass
 
 
 # 礼物处理器
