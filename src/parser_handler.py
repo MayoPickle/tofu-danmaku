@@ -23,7 +23,8 @@ class Constants:
     DEFAULT_API_TOKEN = "8096"
     KEYWORDS = ["观测站"]
     ROBOT_KEYWORD = "记仇机器人"
-    CHATBOT_KEYWORD = "鱼豆腐"
+    CHATBOT_KEYWORDS = ["鱼豆腐", "豆豆"]  # 改为列表，包含多个关键词
+    BLOCKED_USER_HASH = "3645523523"  # 被屏蔽的用户hash
     
     # PK 相关常量
     PK_TYPE_1 = 1
@@ -351,18 +352,46 @@ class DanmakuHandler(EventHandler):
             username = info[2][1]
             logger.info(f"[{username}] {comment}")
             
+            # 检查用户hash，如果是被屏蔽的用户则不处理
+            user_hash = self._extract_user_hash(message)
+            if user_hash == Constants.BLOCKED_USER_HASH:
+                logger.info(f"⛔ 忽略来自屏蔽用户的消息 (hash: {user_hash}): '{comment}'")
+                return
+            
             # 关键词检测
             self._keyword_detection(comment)
             
-            # 鱼豆腐关键词检测（chatbot功能）
-            self._chatbot_detection(comment)
+            # chatbot关键词检测
+            if any(keyword in comment for keyword in Constants.CHATBOT_KEYWORDS):
+                self._chatbot_detection(comment)
             
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
                 self._send_to_setting(comment)
     
+    def _extract_user_hash(self, message: Dict[str, Any]) -> str:
+        """从消息中提取用户的hash值"""
+        try:
+            # 尝试从info字段中提取
+            user_hash = message.get("info", [[0, 0, 0, 0, 0, 0, 0, "", 0]])[0][7]
+            
+            # 如果无法从info字段获取，尝试从info[3]的extra字段获取
+            if not user_hash and len(message.get("info", [])) > 3:
+                extra_info = message.get("info", [{}])[3].get("extra", "{}")
+                if isinstance(extra_info, str):
+                    try:
+                        extra_dict = json.loads(extra_info)
+                        user_hash = extra_dict.get("user_hash", "")
+                    except json.JSONDecodeError:
+                        pass
+            
+            return str(user_hash)
+        except Exception as e:
+            logger.error(f"❌ 提取user_hash时出错: {e}")
+            return ""
+    
     def _keyword_detection(self, danmaku: str) -> None:
-        """检测弹幕内容是否包含关键字并发送 POST 请求到 ticket 接口"""
+        """检测弹幕内容是否包含关键字并发送 POST 请求"""
         if any(keyword in danmaku for keyword in Constants.KEYWORDS):
             payload = {
                 "room_id": self.room_id,
@@ -372,17 +401,21 @@ class DanmakuHandler(EventHandler):
                 logger.info(f"✅ 关键字检测成功：'{danmaku}' 已发送至 ticket 接口")
     
     def _chatbot_detection(self, danmaku: str) -> None:
-        """检测弹幕内容是否包含'鱼豆腐'关键词并发送到 chatbot 接口"""
-        if Constants.CHATBOT_KEYWORD in danmaku:
-            logger.info(f"🤖 检测到'{Constants.CHATBOT_KEYWORD}'关键词：'{danmaku}'")
-            chatbot_payload = {
-                "room_id": str(self.room_id),
-                "message": danmaku
-            }
-            if self.api_client.post("chatbot", chatbot_payload):
-                logger.info(f"✅ 已将消息 '{danmaku}' 发送到 chatbot 接口")
-            else:
-                logger.error(f"❌ 消息 '{danmaku}' 发送到 chatbot 接口失败")
+        """检测弹幕内容是否包含chatbot关键词并发送到 chatbot 接口"""
+        # 记录触发的关键词
+        triggered_keywords = [keyword for keyword in Constants.CHATBOT_KEYWORDS if keyword in danmaku]
+        keywords_str = "、".join(triggered_keywords)
+        
+        logger.info(f"🤖 检测到chatbot关键词「{keywords_str}」：'{danmaku}'")
+        
+        chatbot_payload = {
+            "room_id": str(self.room_id),
+            "message": danmaku
+        }
+        if self.api_client.post("chatbot", chatbot_payload):
+            logger.info(f"✅ 已将消息 '{danmaku}' 发送到 chatbot 接口")
+        else:
+            logger.error(f"❌ 消息 '{danmaku}' 发送到 chatbot 接口失败")
     
     def _send_to_setting(self, danmaku: str) -> None:
         """将包含"记仇机器人"的弹幕发送到 /setting 接口"""
