@@ -549,7 +549,7 @@ class MessageHandlerFactory:
 
 # B站消息解析器
 class BiliMessageParser:
-    def __init__(self, room_id: int, api_base_url: str = "http://192.168.0.101:8081", spider: bool = False):
+    def __init__(self, room_id: int, api_base_url: str = "http://192.168.0.102:8081", spider: bool = False):
         self.room_id = room_id
         self.api_client = APIClient(api_base_url)
         self.current_pk_handler = None
