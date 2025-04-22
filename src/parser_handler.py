@@ -24,7 +24,7 @@ class Constants:
     KEYWORDS = ["观测站"]
     ROBOT_KEYWORD = "记仇机器人"
     CHATBOT_KEYWORDS = ["鱼豆腐", "豆豆"]  # 改为列表，包含多个关键词
-    BLOCKED_USER_HASH = "3645523523"  # 被屏蔽的用户hash
+    BLOCKED_USERNAME_PREFIXES = ["观"]  # 被屏蔽的用户名前缀列表
     
     # PK 相关常量
     PK_TYPE_1 = 1
@@ -352,10 +352,9 @@ class DanmakuHandler(EventHandler):
             username = info[2][1]
             logger.info(f"[{username}] {comment}")
             
-            # 检查用户hash，如果是被屏蔽的用户则不处理
-            user_hash = self._extract_user_hash(message)
-            if user_hash == Constants.BLOCKED_USER_HASH:
-                logger.info(f"⛔ 忽略来自屏蔽用户的消息 (hash: {user_hash}): '{comment}'")
+            # 检查用户名是否以被屏蔽的前缀开头
+            if any(username.startswith(prefix) for prefix in Constants.BLOCKED_USERNAME_PREFIXES):
+                logger.info(f"⛔ 忽略来自被屏蔽前缀用户的消息: [{username}] '{comment}'")
                 return
             
             # 关键词检测
@@ -368,27 +367,6 @@ class DanmakuHandler(EventHandler):
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
                 self._send_to_setting(comment)
-    
-    def _extract_user_hash(self, message: Dict[str, Any]) -> str:
-        """从消息中提取用户的hash值"""
-        try:
-            # 尝试从info字段中提取
-            user_hash = message.get("info", [[0, 0, 0, 0, 0, 0, 0, "", 0]])[0][7]
-            
-            # 如果无法从info字段获取，尝试从info[3]的extra字段获取
-            if not user_hash and len(message.get("info", [])) > 3:
-                extra_info = message.get("info", [{}])[3].get("extra", "{}")
-                if isinstance(extra_info, str):
-                    try:
-                        extra_dict = json.loads(extra_info)
-                        user_hash = extra_dict.get("user_hash", "")
-                    except json.JSONDecodeError:
-                        pass
-            
-            return str(user_hash)
-        except Exception as e:
-            logger.error(f"❌ 提取user_hash时出错: {e}")
-            return ""
     
     def _keyword_detection(self, danmaku: str) -> None:
         """检测弹幕内容是否包含关键字并发送 POST 请求"""
