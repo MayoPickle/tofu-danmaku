@@ -40,11 +40,6 @@ class DanmakuHandler(EventHandler):
             username = info[2][1]
             logger.info(f"[{username}] {comment}")
             
-            # 检查用户名是否以被屏蔽的前缀开头
-            if any(username.startswith(prefix) for prefix in Constants.BLOCKED_USERNAME_PREFIXES):
-                logger.info(f"⛔ 忽略来自被屏蔽前缀用户的消息: [{username}] '{comment}'")
-                return
-            
             # 关键词检测
             self._keyword_detection(comment)
             

@@ -39,20 +39,25 @@ class APIClient:
     def __init__(self, base_url: str):
         self.base_url = base_url
 
-    def post(self, endpoint: str, payload: Dict[str, Any]) -> bool:
-        """发送 POST 请求到指定端点"""
+    def post(self, endpoint: str, payload: Dict[str, Any]) -> tuple:
+        """发送 POST 请求到指定端点
+        
+        Returns:
+            tuple: (成功标志, 状态码或None)
+        """
         url = f"{self.base_url}/{endpoint}"
         try:
             response = requests.post(url, json=payload, timeout=Constants.DEFAULT_TIMEOUT)
-            if response.status_code == 200:
+            status_code = response.status_code
+            if status_code == 200:
                 logger.info(f"✅ 请求成功发送至 {url}")
-                return True
+                return True, status_code
             else:
-                logger.error(f"❌ 请求失败，HTTP 状态码: {response.status_code}")
-                return False
+                logger.error(f"❌ 请求失败，HTTP 状态码: {status_code}")
+                return False, status_code
         except requests.RequestException as e:
             logger.error(f"❌ 请求异常: {e}")
-            return False
+            return False, None
 
 
 # 事件处理器基类
@@ -352,17 +357,27 @@ class DanmakuHandler(EventHandler):
             username = info[2][1]
             logger.info(f"[{username}] {comment}")
             
-            # 检查用户名是否以被屏蔽的前缀开头
-            if any(username.startswith(prefix) for prefix in Constants.BLOCKED_USERNAME_PREFIXES):
-                logger.info(f"⛔ 忽略来自被屏蔽前缀用户的消息: [{username}] '{comment}'")
+            # 检查用户名是否以"观"开头，如果是则不处理
+            if username.startswith("观"):
+                logger.info(f"⛔ 忽略来自以'观'开头的用户的消息: [{username}] '{comment}'")
                 return
             
             # 关键词检测
             self._keyword_detection(comment)
             
-            # chatbot关键词检测
+            # chatbot关键词检测和点赞检测
             if any(keyword in comment for keyword in Constants.CHATBOT_KEYWORDS):
-                self._chatbot_detection(comment)
+                modified_comment = comment
+                
+                # 检查是否是豆豆+点赞组合，如果是则先处理sendlike
+                if "豆豆" in comment and "点赞" in comment:
+                    error_msg = self._sendlike_detection(comment)
+                    if error_msg:
+                        # 如果有错误信息，则将其附加到原始消息后
+                        modified_comment = f"{comment} {error_msg}"
+                
+                # 然后再处理chatbot
+                self._chatbot_detection(modified_comment)
             
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
@@ -375,7 +390,8 @@ class DanmakuHandler(EventHandler):
                 "room_id": self.room_id,
                 "danmaku": danmaku
             }
-            if self.api_client.post("ticket", payload):
+            success, _ = self.api_client.post("ticket", payload)
+            if success:
                 logger.info(f"✅ 关键字检测成功：'{danmaku}' 已发送至 ticket 接口")
     
     def _chatbot_detection(self, danmaku: str) -> None:
@@ -390,10 +406,33 @@ class DanmakuHandler(EventHandler):
             "room_id": str(self.room_id),
             "message": danmaku
         }
-        if self.api_client.post("chatbot", chatbot_payload):
+        success, _ = self.api_client.post("chatbot", chatbot_payload)
+        if success:
             logger.info(f"✅ 已将消息 '{danmaku}' 发送到 chatbot 接口")
         else:
             logger.error(f"❌ 消息 '{danmaku}' 发送到 chatbot 接口失败")
+    
+    def _sendlike_detection(self, danmaku: str) -> Optional[str]:
+        """发送包含豆豆和点赞的消息到 sendlike 接口
+        
+        Returns:
+            Optional[str]: 如果发生错误，返回错误信息；如果成功，返回None
+        """
+        logger.info(f"👍 检测到豆豆+点赞组合：'{danmaku}'")
+        
+        sendlike_payload = {
+            "room_id": str(self.room_id),
+            "message": danmaku
+        }
+        success, status_code = self.api_client.post("sendlike", sendlike_payload)
+        
+        if success:
+            logger.info(f"✅ 已将消息 '{danmaku}' 发送到 sendlike 接口")
+            return None
+        else:
+            error_msg = f"（已触发点赞服务，但服务器返回{status_code or '未知错误'}）"
+            logger.error(f"❌ 消息 '{danmaku}' 发送到 sendlike 接口失败: {status_code}")
+            return error_msg
     
     def _send_to_setting(self, danmaku: str) -> None:
         """将包含"记仇机器人"的弹幕发送到 /setting 接口"""
@@ -401,7 +440,8 @@ class DanmakuHandler(EventHandler):
             "room_id": self.room_id,
             "danmaku": danmaku
         }
-        if self.api_client.post("setting", payload):
+        success, _ = self.api_client.post("setting", payload)
+        if success:
             logger.info(f"✅ 记仇机器人指令：'{danmaku}' 已发送")
     
     def stop(self) -> None:

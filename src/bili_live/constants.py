@@ -15,8 +15,6 @@ class Constants:
     # 弹幕关键词
     KEYWORDS = ["观测站", "鱼豆腐"]
     ROBOT_KEYWORD = "记仇机器人"
-    # 被屏蔽的用户名前缀列表
-    BLOCKED_USERNAME_PREFIXES = ["观"]
     
     # PK 相关常量
     PK_TYPE_1 = 1
