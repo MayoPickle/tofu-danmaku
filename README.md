@@ -108,6 +108,31 @@ class MyPlugin(PluginBase):
         return True  # 继续传递消息给其他插件
 ```
 
+## 配置说明
+
+### 修改API服务器地址
+
+如需修改API服务器地址，请编辑 `src/config.py` 文件中的 `API_BASE_URL` 变量：
+
+```python
+# 这是发送弹幕、PK等信息的服务器地址
+# 格式为：http://IP地址:端口号 或 https://域名
+API_BASE_URL = "http://新地址:端口号"
+```
+
+修改完成后重启程序即可生效。
+
+### 其他配置项
+
+在 `src/config.py` 文件中，你还可以修改其他配置项，如：
+
+- 关键词列表
+- 超时时间
+- PK相关参数
+- 被屏蔽的用户名前缀
+
+所有配置项都有详细的注释说明。
+
 ## 贡献
 
 欢迎提交Issue和Pull Request！

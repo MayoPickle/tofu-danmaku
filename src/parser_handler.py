@@ -8,6 +8,19 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Callable, Union
 from dataclasses import dataclass
 
+# 导入配置
+from .config import (
+    API_BASE_URL,
+    DEFAULT_TIMEOUT, 
+    DEFAULT_API_TOKEN,
+    KEYWORDS,
+    ROBOT_KEYWORD,
+    CHATBOT_KEYWORDS,
+    BLOCKED_USERNAME_PREFIXES,
+    PK_DELAYED_CHECK_TIME,
+    PK_END_CHECK_TIME,
+    PK_OPPONENT_VOTES_THRESHOLD
+)
 
 # 配置日志
 logging.basicConfig(
@@ -19,19 +32,19 @@ logger = logging.getLogger(__name__)
 
 # 常量定义
 class Constants:
-    DEFAULT_TIMEOUT = 3
-    DEFAULT_API_TOKEN = "8096"
-    KEYWORDS = ["观测站"]
-    ROBOT_KEYWORD = "记仇机器人"
-    CHATBOT_KEYWORDS = ["鱼豆腐", "豆豆"]  # 改为列表，包含多个关键词
-    BLOCKED_USERNAME_PREFIXES = ["观"]  # 被屏蔽的用户名前缀列表
+    DEFAULT_TIMEOUT = DEFAULT_TIMEOUT
+    DEFAULT_API_TOKEN = DEFAULT_API_TOKEN
+    KEYWORDS = KEYWORDS
+    ROBOT_KEYWORD = ROBOT_KEYWORD
+    CHATBOT_KEYWORDS = CHATBOT_KEYWORDS  # 改为列表，包含多个关键词
+    BLOCKED_USERNAME_PREFIXES = BLOCKED_USERNAME_PREFIXES  # 被屏蔽的用户名前缀列表
     
     # PK 相关常量
     PK_TYPE_1 = 1
     PK_TYPE_2 = 2
-    PK_DELAYED_CHECK_TIME = 170  # 秒
-    PK_END_CHECK_TIME = 290  # 秒
-    PK_OPPONENT_VOTES_THRESHOLD = 100
+    PK_DELAYED_CHECK_TIME = PK_DELAYED_CHECK_TIME  # 秒
+    PK_END_CHECK_TIME = PK_END_CHECK_TIME  # 秒
+    PK_OPPONENT_VOTES_THRESHOLD = PK_OPPONENT_VOTES_THRESHOLD
 
 
 # API 客户端
@@ -466,6 +479,8 @@ class GiftHandler(EventHandler):
             gift_id = data.get("giftId", 0)
             gift_name = data.get("giftName", "")
             price = data.get("price", 0)
+            # 提取礼物数量
+            gift_num = data.get("num", 1)  # 默认为1个
             
             # 如果有 sender_uinfo 就从那里获取更详细的用户信息
             if "sender_uinfo" in data and "base" in data["sender_uinfo"]:
@@ -473,8 +488,8 @@ class GiftHandler(EventHandler):
                 uid = data["sender_uinfo"].get("uid", uid)
                 uname = sender_base.get("name", uname)
             
-            # 打印礼物信息
-            logger.info(f"🎁 礼物: [{uname}] 赠送 [{gift_name}] x1, 价值: {price}")
+            # 打印礼物信息，包含数量
+            logger.info(f"🎁 礼物: [{uname}] 赠送 [{gift_name}] x{gift_num}, 价值: {price * gift_num}")
             
             # 发送到 /money 接口
             payload = {
@@ -483,10 +498,15 @@ class GiftHandler(EventHandler):
                 "uname": uname,
                 "gift_id": gift_id,
                 "gift_name": gift_name,
+                "gift_num": gift_num,  # 添加礼物数量
                 "price": price
             }
             
-            self.api_client.post("money", payload)
+            success, _ = self.api_client.post("money", payload)
+            if success:
+                logger.info(f"✅ 礼物记录已发送: {uname} 赠送 {gift_name} x{gift_num}")
+            else:
+                logger.error(f"❌ 礼物记录发送失败: {uname} 赠送 {gift_name} x{gift_num}")
         except Exception as e:
             logger.error(f"❌ 处理礼物消息时发生错误: {e}")
     
@@ -549,7 +569,7 @@ class MessageHandlerFactory:
 
 # B站消息解析器
 class BiliMessageParser:
-    def __init__(self, room_id: int, api_base_url: str = "http://192.168.0.101:8081", spider: bool = False):
+    def __init__(self, room_id: int, api_base_url: str = API_BASE_URL, spider: bool = False):
         self.room_id = room_id
         self.api_client = APIClient(api_base_url)
         self.current_pk_handler = None
