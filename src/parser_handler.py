@@ -19,7 +19,9 @@ from .config import (
     BLOCKED_USERNAME_PREFIXES,
     PK_DELAYED_CHECK_TIME,
     PK_END_CHECK_TIME,
-    PK_OPPONENT_VOTES_THRESHOLD
+    PK_OPPONENT_VOTES_THRESHOLD,
+    GUARD_MODE_KEYWORDS,
+    GUARD_MODE_VOTE_DIFFERENCE
 )
 
 # 配置日志
@@ -45,6 +47,10 @@ class Constants:
     PK_DELAYED_CHECK_TIME = PK_DELAYED_CHECK_TIME  # 秒
     PK_END_CHECK_TIME = PK_END_CHECK_TIME  # 秒
     PK_OPPONENT_VOTES_THRESHOLD = PK_OPPONENT_VOTES_THRESHOLD
+    
+    # 保卫模式相关常量
+    GUARD_MODE_KEYWORDS = GUARD_MODE_KEYWORDS
+    GUARD_MODE_VOTE_DIFFERENCE = GUARD_MODE_VOTE_DIFFERENCE
 
 
 # API 客户端
@@ -245,6 +251,62 @@ class PKDataCollector:
         logger.info("✅ 更新了 PK_INFO 数据")
 
 
+# 保卫模式管理器
+class GuardModeManager:
+    """保卫模式管理器
+    
+    负责管理保卫模式的激活状态和相关逻辑
+    """
+    
+    def __init__(self):
+        self.is_active = False
+        self.activated_keyword = None
+        self.lock = threading.Lock()
+    
+    def activate(self, keyword: str) -> bool:
+        """激活保卫模式
+        
+        Args:
+            keyword: 激活保卫模式的关键词
+            
+        Returns:
+            bool: 是否成功激活
+        """
+        with self.lock:
+            if not self.is_active:
+                self.is_active = True
+                self.activated_keyword = keyword
+                logger.info(f"🛡️ 保卫模式已激活，触发关键词：'{keyword}'")
+                return True
+            else:
+                logger.info(f"⚠️ 保卫模式已经处于激活状态，忽略关键词：'{keyword}'")
+                return False
+    
+    def deactivate(self) -> None:
+        """关闭保卫模式"""
+        with self.lock:
+            if self.is_active:
+                logger.info(f"🛡️ 保卫模式已关闭，之前的触发关键词：'{self.activated_keyword}'")
+                self.is_active = False
+                self.activated_keyword = None
+            else:
+                logger.debug("保卫模式本来就是关闭状态")
+    
+    def is_guard_mode_active(self) -> bool:
+        """检查保卫模式是否激活"""
+        with self.lock:
+            return self.is_active
+    
+    def get_activated_keyword(self) -> Optional[str]:
+        """获取激活保卫模式的关键词"""
+        with self.lock:
+            return self.activated_keyword
+
+
+# 全局保卫模式管理器实例
+guard_mode_manager = GuardModeManager()
+
+
 # PK 战斗处理器
 class PKBattleHandler(EventHandler):
     def __init__(self, room_id: int, api_client: APIClient, battle_type: int):
@@ -314,12 +376,22 @@ class PKBattleHandler(EventHandler):
             return
         
         try:
-            self_votes, _ = self.data_collector.get_votes_data(self.battle_type)
+            self_votes, opponent_votes = self.data_collector.get_votes_data(self.battle_type)
             
-            logger.info(f"🔍 结束检查 battle_type={self.battle_type}: 己方votes={self_votes}")
+            logger.info(f"🔍 结束检查 battle_type={self.battle_type}: 己方votes={self_votes}, 对方votes={opponent_votes}")
             
-            # 结束检查只需要己方票数为0，不需要检查对方票数
-            if self_votes == 0:
+            # 检查保卫模式是否激活
+            if guard_mode_manager.is_guard_mode_active():
+                activated_keyword = guard_mode_manager.get_activated_keyword()
+                target_votes = opponent_votes + Constants.GUARD_MODE_VOTE_DIFFERENCE
+                
+                logger.info(f"🛡️ 保卫模式激活中，触发关键词：'{activated_keyword}'")
+                logger.info(f"🎯 保卫模式目标：对方{opponent_votes}票，将发送{target_votes}票")
+                
+                self.pk_triggered = True
+                self.trigger_guard_mode_api(target_votes, activated_keyword)
+            elif self_votes == 0:
+                # 原有的结束检查逻辑
                 logger.info("⚠️ 结束检查：己方票数为0，将触发API")
                 self.pk_triggered = True
                 self.trigger_api()
@@ -340,6 +412,10 @@ class PKBattleHandler(EventHandler):
             self.delayed_check_timer.cancel()
         if self.end_timer:
             self.end_timer.cancel()
+        
+        # PK结束时关闭保卫模式
+        guard_mode_manager.deactivate()
+        
         logger.info("🛑 停止计时器并销毁 PKBattleHandler 实例")
     
     def trigger_api(self) -> None:
@@ -354,6 +430,31 @@ class PKBattleHandler(EventHandler):
         }
         
         self.api_client.post("pk_wanzun", payload)
+    
+    def trigger_guard_mode_api(self, target_votes: int, activated_keyword: str) -> None:
+        """触发保卫模式 API
+        
+        Args:
+            target_votes: 目标票数
+            activated_keyword: 激活保卫模式的关键词
+        """
+        pk_data = self.data_collector.get_pk_data(self.battle_type)
+        
+        payload = {
+            "room_id": self.room_id,
+            "battle_type": self.battle_type,
+            "pk_data": pk_data,
+            "token": Constants.DEFAULT_API_TOKEN,
+            "guard_mode": True,
+            "target_votes": target_votes,
+            "activated_keyword": activated_keyword
+        }
+        
+        success, _ = self.api_client.post("pk_wanzun", payload)
+        if success:
+            logger.info(f"🛡️ 保卫模式API调用成功：目标票数={target_votes}，关键词='{activated_keyword}'")
+        else:
+            logger.error(f"❌ 保卫模式API调用失败：目标票数={target_votes}，关键词='{activated_keyword}'")
 
 
 # 弹幕处理器
@@ -391,6 +492,9 @@ class DanmakuHandler(EventHandler):
                 
                 # 然后再处理chatbot
                 self._chatbot_detection(modified_comment)
+                
+                # 保卫模式检测（需要先激活豆豆）
+                self._guard_mode_detection(comment)
             
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
@@ -456,6 +560,27 @@ class DanmakuHandler(EventHandler):
         success, _ = self.api_client.post("setting", payload)
         if success:
             logger.info(f"✅ 记仇机器人指令：'{danmaku}' 已发送")
+    
+    def _guard_mode_detection(self, danmaku: str) -> None:
+        """检测弹幕内容是否包含保卫模式关键词并激活保卫模式"""
+        for keyword in Constants.GUARD_MODE_KEYWORDS:
+            if keyword in danmaku:
+                success = guard_mode_manager.activate(keyword)
+                if success:
+                    logger.info(f"🛡️ 保卫模式已激活，触发关键词：'{keyword}'，完整消息：'{danmaku}'")
+                    
+                    # 将关键词也发送给接口
+                    payload = {
+                        "room_id": self.room_id,
+                        "danmaku": danmaku,
+                        "guard_keyword": keyword
+                    }
+                    api_success, _ = self.api_client.post("guard_mode", payload)
+                    if api_success:
+                        logger.info(f"✅ 保卫模式关键词已发送至接口：'{keyword}'")
+                    else:
+                        logger.error(f"❌ 保卫模式关键词发送失败：'{keyword}'")
+                break  # 只处理第一个匹配的关键词
     
     def stop(self) -> None:
         """停止处理器"""

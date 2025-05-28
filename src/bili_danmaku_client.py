@@ -1,11 +1,19 @@
 import websocket
 import threading
 import time
+import logging
 from websocket import ABNF
 
 from .fetch import fetch_server_info
 from .packet import create_handshake_packet, create_heartbeat_packet
 from .parser_handler import BiliMessageParser
+
+# 设置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 class BiliDanmakuClient:
@@ -17,6 +25,11 @@ class BiliDanmakuClient:
         self.ws = None
         self.heartbeat_interval = 30  # 心跳间隔时间（秒）
         self.parser = BiliMessageParser(room_id, spider=bool(spider))
+        
+        if spider:
+            logger.info("🕷️ 直播间爬虫功能已启用")
+        else:
+            logger.info("ℹ️ 直播间爬虫功能未启用")
 
     def fetch_server_info(self):
         return fetch_server_info(self)
@@ -37,20 +50,20 @@ class BiliDanmakuClient:
                 break
 
     def on_open(self, ws):
-        print("✅ WebSocket 连接已建立")
+        logger.info("✅ WebSocket 连接已建立")
         handshake_packet = self.create_handshake_packet()
         ws.send(handshake_packet, ABNF.OPCODE_BINARY)
-        print("✅ 认证包发送成功")
+        logger.info("✅ 认证包发送成功")
         threading.Thread(target=self.send_heartbeat, daemon=True).start()
 
     def on_message(self, ws, message):
         self.parser.parse_message(message)
 
     def on_error(self, ws, error):
-        print(f"❌ WebSocket 错误: {error}")
+        logger.error(f"❌ WebSocket 错误: {error}")
 
     def on_close(self, ws, close_status_code, close_msg):
-        print(f"❌ WebSocket 连接已关闭，状态码: {close_status_code}, 原因: {close_msg}")
+        logger.info(f"❌ WebSocket 连接已关闭，状态码: {close_status_code}, 原因: {close_msg}")
 
     def start(self):
         if not self.fetch_server_info():

@@ -23,6 +23,10 @@ class Constants:
     PK_END_CHECK_TIME = 290  # 秒
     PK_OPPONENT_VOTES_THRESHOLD = 100
     
+    # 保卫模式相关常量
+    GUARD_MODE_KEYWORDS = ["前进一", "前进二", "前进三", "前进四"]
+    GUARD_MODE_VOTE_DIFFERENCE = 2
+    
     # 消息类型
     MSG_DANMU = "DANMU_MSG"
     MSG_GIFT = "SEND_GIFT"

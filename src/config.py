@@ -45,4 +45,13 @@ PK_DELAYED_CHECK_TIME = 170
 PK_END_CHECK_TIME = 290
 
 # 对手票数阈值，超过此值且己方为0时触发API
-PK_OPPONENT_VOTES_THRESHOLD = 100 
+PK_OPPONENT_VOTES_THRESHOLD = 100
+
+#############################################
+# 保卫模式配置
+#############################################
+# 保卫模式激活关键词列表（需要先激活豆豆）
+GUARD_MODE_KEYWORDS = ["前进一", "前进二", "前进三", "前进四"]
+
+# 保卫模式票数差值（比对方多送的票数）
+GUARD_MODE_VOTE_DIFFERENCE = 2 
