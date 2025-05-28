@@ -4,6 +4,7 @@ import brotli
 import requests
 import threading
 import logging
+import sys
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Callable, Union
 from dataclasses import dataclass
@@ -24,12 +25,20 @@ from .config import (
     GUARD_MODE_VOTE_DIFFERENCE
 )
 
-# 配置日志
+# 配置日志，确保在 Docker 中也能正确输出
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ],
+    force=True  # 强制重新配置日志
 )
 logger = logging.getLogger(__name__)
+
+# 确保日志立即输出
+for handler in logger.handlers:
+    handler.flush = lambda: sys.stdout.flush()
 
 
 # 常量定义
@@ -469,11 +478,17 @@ class DanmakuHandler(EventHandler):
         if len(info) > 2:
             comment = info[1]
             username = info[2][1]
-            logger.info(f"[{username}] {comment}")
+            
+            # 使用 print 确保弹幕立即输出，同时保留日志
+            danmaku_msg = f"[{username}] {comment}"
+            print(danmaku_msg, flush=True)  # 添加 flush=True 确保立即输出
+            logger.info(danmaku_msg)
             
             # 检查用户名是否以"观"开头，如果是则不处理
             if username.startswith("观"):
-                logger.info(f"⛔ 忽略来自以'观'开头的用户的消息: [{username}] '{comment}'")
+                ignore_msg = f"⛔ 忽略来自以'观'开头的用户的消息: [{username}] '{comment}'"
+                print(ignore_msg, flush=True)
+                logger.info(ignore_msg)
                 return
             
             # 关键词检测

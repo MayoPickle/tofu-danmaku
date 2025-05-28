@@ -2,6 +2,7 @@ import websocket
 import threading
 import time
 import logging
+import sys
 from websocket import ABNF
 
 from .fetch import fetch_server_info
@@ -11,9 +12,15 @@ from .parser_handler import BiliMessageParser
 # 设置日志
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)  # 明确指定输出到 stdout
+    ]
 )
 logger = logging.getLogger(__name__)
+
+# 确保日志立即输出
+logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
 
 
 class BiliDanmakuClient:
