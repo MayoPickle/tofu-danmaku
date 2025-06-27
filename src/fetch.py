@@ -6,8 +6,38 @@ from .wbi_sign import get_wbi_sign, extract_key_from_url
 
 logger = logging.getLogger(__name__)
 
+def fetch_buvid():
+    """获取 buvid3 和 buvid4"""
+    url = "https://api.bilibili.com/x/frontend/finger/spi"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://www.bilibili.com/"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('code') == 0 and 'data' in data:
+                return {
+                    'buvid3': data['data'].get('b_3', ''),
+                    'buvid4': data['data'].get('b_4', '')
+                }
+    except Exception as e:
+        logger.warning(f"获取 buvid 失败: {e}")
+    
+    return {'buvid3': '', 'buvid4': ''}
+
 def fetch_wbi_keys():
     """获取 WBI 密钥的统一方法"""
+    # 获取 buvid3 和 buvid4
+    buvid_data = fetch_buvid()
+    cookies = {}
+    if buvid_data['buvid3']:
+        cookies['buvid3'] = buvid_data['buvid3']
+    if buvid_data['buvid4']:
+        cookies['buvid4'] = buvid_data['buvid4']
+    
     # 方法1: 从导航API获取（需要cookie但不需要登录）
     url = "https://api.bilibili.com/nav"
     headers = {
@@ -16,7 +46,7 @@ def fetch_wbi_keys():
     }
     
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, cookies=cookies)
         if response.status_code == 200:
             data = response.json()
             if data.get('code') == 0 and 'data' in data:
@@ -37,6 +67,10 @@ def fetch_wbi_keys():
 
 def fetch_server_info(self):
     """通过 API 获取服务器地址和 token"""
+    # 获取 buvid3 和 buvid4
+    buvid_data = fetch_buvid()
+    logger.info(f"获取到 buvid3: {buvid_data['buvid3'][:20]}..., buvid4: {buvid_data['buvid4'][:20]}...")
+    
     # 获取 WBI 密钥
     wbi_keys = fetch_wbi_keys()
     
@@ -63,8 +97,15 @@ def fetch_server_info(self):
         "Origin": "https://live.bilibili.com"
     }
     
+    # 准备 cookies
+    cookies = {}
+    if buvid_data['buvid3']:
+        cookies['buvid3'] = buvid_data['buvid3']
+    if buvid_data['buvid4']:
+        cookies['buvid4'] = buvid_data['buvid4']
+    
     try:
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(url, headers=headers, params=params, cookies=cookies)
         
         if response.status_code == 200:
             data = response.json()
@@ -85,7 +126,7 @@ def fetch_server_info(self):
                         "id": str(self.room_id),
                         "type": "0"
                     }
-                    response = requests.get(url, headers=headers, params=params_no_wbi)
+                    response = requests.get(url, headers=headers, params=params_no_wbi, cookies=cookies)
                     if response.status_code == 200:
                         data = response.json()
                         if data['code'] == 0:
