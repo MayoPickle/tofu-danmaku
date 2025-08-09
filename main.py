@@ -25,6 +25,7 @@ def get_arguments():
     parser = argparse.ArgumentParser(description="Bili Danmaku Client")
     parser.add_argument('--room-id', type=int, help='直接传入房间号启动，不显示房间历史列表')
     parser.add_argument('--spider', action='store_true', help='启用直播间爬虫功能，监听STOP_LIVE_ROOM_LIST消息')
+    parser.add_argument('--api', type=str, help='API服务器URL，例如 http://127.0.0.1:8081')
     return parser.parse_args()
 
 def main():
@@ -49,7 +50,7 @@ def main():
         history_ids = [str(h["room_id"]) for h in history_list]
 
         # 启动客户端
-        client = BiliDanmakuClient(room_id, spider=args.spider)
+        client = BiliDanmakuClient(room_id, spider=args.spider, api_base_url=args.api)
         client.start()
         return  # 启动后直接退出函数
 
@@ -85,7 +86,7 @@ def main():
         print("🕷️ 直播间爬虫功能已启用")
         
     # 启动客户端
-    client = BiliDanmakuClient(room_id, spider=args.spider)
+    client = BiliDanmakuClient(room_id, spider=args.spider, api_base_url=args.api)
     client.start()
 
 

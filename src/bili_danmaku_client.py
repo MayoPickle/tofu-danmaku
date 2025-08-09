@@ -8,6 +8,7 @@ from websocket import ABNF
 from .fetch import fetch_server_info
 from .packet import create_handshake_packet, create_heartbeat_packet
 from .parser_handler import BiliMessageParser
+from .config import API_BASE_URL
 
 # 设置日志
 logging.basicConfig(
@@ -24,14 +25,19 @@ logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
 
 
 class BiliDanmakuClient:
-    def __init__(self, room_id, spider=False):
+    def __init__(self, room_id, spider=False, api_base_url=None):
         self.room_id = room_id  # 房间号
         self.spider = spider    # 是否启用爬虫功能
         self.ws_url = None      # WebSocket 地址
         self.token = None       # 动态获取的 token 
         self.ws = None
         self.heartbeat_interval = 30  # 心跳间隔时间（秒）
-        self.parser = BiliMessageParser(room_id, spider=bool(spider))
+        self.api_base_url = api_base_url
+        self.parser = BiliMessageParser(
+            room_id,
+            api_base_url=self.api_base_url or API_BASE_URL,
+            spider=bool(spider)
+        )
         
         if spider:
             logger.info("🕷️ 直播间爬虫功能已启用")

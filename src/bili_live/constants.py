@@ -10,7 +10,7 @@ class Constants:
     # API相关常量
     DEFAULT_TIMEOUT = 3
     DEFAULT_API_TOKEN = "8096"
-    DEFAULT_API_URL = "http://192.168.0.101:8081"
+    DEFAULT_API_URL = "http://127.0.0.1:8081"
     
     # 弹幕关键词
     KEYWORDS = ["观测站", "鱼豆腐"]
