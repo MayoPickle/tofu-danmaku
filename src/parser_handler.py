@@ -671,6 +671,99 @@ class GiftHandler(EventHandler):
         pass
 
 
+# 进场特效（用户进入）处理器
+class EntryEffectHandler(EventHandler):
+    def __init__(self, room_id: int, api_client: APIClient):
+        self.room_id = room_id
+        self.api_client = api_client
+
+    def handle(self, message: Dict[str, Any]) -> None:
+        """处理 ENTRY_EFFECT（用户进入）事件，转发到 /entry_welcome 接口"""
+        try:
+            data = message.get("data", {}) if isinstance(message, dict) else {}
+            uid = None
+            uname = None
+            face_url = None
+            wealth_level = None
+            medal_info: Dict[str, Any] = {}
+            guard_level = None
+            privilege_type = None
+
+            if isinstance(data, dict):
+                # uid、uname、头像
+                uid = data.get("uid") or (data.get("uinfo", {}) or {}).get("uid")
+                uinfo = data.get("uinfo") or {}
+                base = uinfo.get("base") if isinstance(uinfo, dict) else None
+                if isinstance(base, dict):
+                    uname = base.get("name")
+                    face_url = base.get("face")
+                if not face_url:
+                    face_url = data.get("face")
+
+                # 财富等级
+                wealth = uinfo.get("wealth") if isinstance(uinfo, dict) else None
+                if isinstance(wealth, dict):
+                    wealth_level = wealth.get("level")
+                if wealth_level is None and isinstance(data.get("wealthy_info"), dict):
+                    wealth_level = data["wealthy_info"].get("level")
+
+                # 勋章信息（牌子 + 等级）
+                medal = uinfo.get("medal") if isinstance(uinfo, dict) else None
+                if isinstance(medal, dict):
+                    medal_info = {
+                        "name": medal.get("name"),
+                        "level": medal.get("level"),
+                        "is_light": medal.get("is_light"),
+                        "ruid": medal.get("ruid"),
+                        "guard_level": medal.get("guard_level"),
+                        "color": medal.get("color"),
+                        "color_start": medal.get("color_start"),
+                        "color_end": medal.get("color_end"),
+                        "color_border": medal.get("color_border"),
+                    }
+
+                # 舰长/大航海等级与类型
+                guard = uinfo.get("guard") if isinstance(uinfo, dict) else None
+                if isinstance(guard, dict):
+                    guard_level = guard.get("level")
+                privilege_type = data.get("privilege_type")
+
+            # 是否是舰长（guard_level==3 或 privilege_type==3 视为舰长）
+            is_captain = (guard_level == 3) or (privilege_type == 3)
+
+            payload: Dict[str, Any] = {
+                "room_id": self.room_id,
+                "raw_message": message,
+                "is_captain": bool(is_captain),
+            }
+            if uid is not None:
+                payload["uid"] = uid
+            if uname:
+                payload["uname"] = uname
+            if face_url:
+                payload["face"] = face_url
+            if wealth_level is not None:
+                payload["wealth_level"] = wealth_level
+            if medal_info:
+                payload["medal"] = medal_info
+            if guard_level is not None:
+                payload["guard_level"] = guard_level
+            if privilege_type is not None:
+                payload["privilege_type"] = privilege_type
+
+            success, _ = self.api_client.post("entry_welcome", payload)
+            if success:
+                logger.info(
+                    f"✅ /entry_welcome 上报成功：uid={uid or '-'} uname={uname or '-'} is_captain={is_captain}"
+                )
+            else:
+                logger.error("❌ 上报 /entry_welcome 失败")
+        except Exception as e:
+            logger.error(f"❌ 处理 ENTRY_EFFECT 时发生错误: {e}")
+
+    def stop(self) -> None:
+        pass
+
 # 直播间列表处理器
 class LiveRoomListHandler(EventHandler):
     def __init__(self, room_id: int, api_client: APIClient):
@@ -714,7 +807,8 @@ class MessageHandlerFactory:
         handlers = {
             "DANMU_MSG": DanmakuHandler,
             "SEND_GIFT": GiftHandler,
-            "STOP_LIVE_ROOM_LIST": LiveRoomListHandler
+            "STOP_LIVE_ROOM_LIST": LiveRoomListHandler,
+            "ENTRY_EFFECT": EntryEffectHandler,
         }
         
         handler_class = handlers.get(cmd)
