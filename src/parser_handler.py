@@ -714,13 +714,14 @@ class MessageHandlerFactory:
 
 # B站消息解析器
 class BiliMessageParser:
-    def __init__(self, room_id: int, api_base_url: str = API_BASE_URL, spider: bool = False, debug_events: bool = False):
+    def __init__(self, room_id: int, api_base_url: str = API_BASE_URL, spider: bool = False, debug_events: bool = False, on_authenticated=None):
         self.room_id = room_id
         self.api_client = APIClient(api_base_url)
         self.current_pk_handler = None
         # 确保将spider参数转换为布尔值
         self.spider_enabled = bool(spider)
         self.debug_events = bool(debug_events)
+        self.on_authenticated = on_authenticated
         
         # 初始化处理器映射
         self.persistent_handlers = {}
@@ -780,6 +781,12 @@ class BiliMessageParser:
                         popularity = int.from_bytes(body, "big")
                         if self.debug_events:
                             print(f"[DEBUG] 人气值: {popularity}", flush=True)
+                    elif operation == 8:
+                        # op=8 认证通过
+                        if callable(self.on_authenticated):
+                            self.on_authenticated()
+                        if self.debug_events:
+                            print("[DEBUG] 认证成功(op=8)，将启动心跳", flush=True)
                 offset += packet_length
         except Exception as e:
             logger.error(f"❌ 消息解析错误: {e}")

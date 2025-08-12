@@ -3,13 +3,21 @@ import struct
 
 def create_handshake_packet(self):
     """生成认证包"""
+    # 如果有登录UID则带上；否则为0
+    try:
+        uid = int(getattr(self, 'user_uid', 0) or 0)
+    except Exception:
+        uid = 0
+    buvid = getattr(self, 'buvid3', '') or ''
+
     payload = {
-        "uid": 0,          # 0 表示游客登录
+        "uid": uid,
         "roomid": self.room_id,
-        "protover": 3,     # 使用 brotli 压缩
+        "protover": 3,
         "platform": "web",
         "type": 2,
-        "key": self.token  # 动态填入 token
+        "key": self.token,
+        **({"buvid": buvid} if buvid else {}),
     }
     payload_bytes = json.dumps(payload).encode("utf-8")
     header = struct.pack('>IHHII', len(payload_bytes) + 16, 16, 1, 7, 1)

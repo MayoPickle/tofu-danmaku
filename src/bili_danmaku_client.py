@@ -4,6 +4,7 @@ import time
 import logging
 import sys
 from websocket import ABNF
+from typing import Optional
 
 from .fetch import fetch_server_info
 from .packet import create_handshake_packet, create_heartbeat_packet
@@ -25,7 +26,7 @@ logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
 
 
 class BiliDanmakuClient:
-    def __init__(self, room_id, spider=False, api_base_url=None, debug_events: bool = False):
+    def __init__(self, room_id, spider=False, api_base_url=None, debug_events: bool = False, cookie: Optional[str] = None, debug_ws: bool = False):
         self.room_id = room_id  # 房间号
         self.spider = spider    # 是否启用爬虫功能
         self.ws_url = None      # WebSocket 地址
@@ -34,17 +35,45 @@ class BiliDanmakuClient:
         self.heartbeat_interval = 30  # 心跳间隔时间（秒）
         self.api_base_url = api_base_url
         self.debug_events = bool(debug_events)
+        self.cookie_str = cookie
+        self.cookies = self._parse_cookie_string(cookie) if cookie else {}
+        self.debug_ws = bool(debug_ws)
+        # 从 Cookie 中提取用户UID（如有）
+        try:
+            self.user_uid = int(self.cookies.get('DedeUserID', '0')) if self.cookies else 0
+        except Exception:
+            self.user_uid = 0
+        # 将在 fetch_server_info 中填充 buvid3/4
+        self.buvid3 = ''
+        self.buvid4 = ''
+        self.heartbeat_started = False
         self.parser = BiliMessageParser(
             room_id,
             api_base_url=self.api_base_url or API_BASE_URL,
             spider=bool(spider),
-            debug_events=self.debug_events
+            debug_events=self.debug_events,
+            on_authenticated=self.on_auth_success
         )
         
         if spider:
             logger.info("🕷️ 直播间爬虫功能已启用")
         else:
             logger.info("ℹ️ 直播间爬虫功能未启用")
+
+    @staticmethod
+    def _parse_cookie_string(cookie_str: str) -> dict:
+        """将形如 "k1=v1; k2=v2" 的Cookie字符串解析为dict"""
+        cookies = {}
+        try:
+            for part in cookie_str.split(';'):
+                if not part.strip():
+                    continue
+                if '=' in part:
+                    k, v = part.split('=', 1)
+                    cookies[k.strip()] = v.strip()
+        except Exception:
+            pass
+        return cookies
 
     def fetch_server_info(self):
         return fetch_server_info(self)
@@ -69,7 +98,13 @@ class BiliDanmakuClient:
         handshake_packet = self.create_handshake_packet()
         ws.send(handshake_packet, ABNF.OPCODE_BINARY)
         logger.info("✅ 认证包发送成功")
-        threading.Thread(target=self.send_heartbeat, daemon=True).start()
+
+    def on_auth_success(self):
+        """认证成功后启动心跳，不要在 on_open 里就发，避免早发导致被断开"""
+        if not self.heartbeat_started:
+            self.heartbeat_started = True
+            threading.Thread(target=self.send_heartbeat, daemon=True).start()
+            logger.info("✅ 已收到认证通过，启动心跳线程")
 
     def on_message(self, ws, message):
         self.parser.parse_message(message)
@@ -84,6 +119,9 @@ class BiliDanmakuClient:
         if not self.fetch_server_info():
             return
 
+        if self.debug_ws:
+            logger.info(f"[WS] 即将连接: url={self.ws_url}")
+
         self.ws = websocket.WebSocketApp(
             self.ws_url,
             on_open=self.on_open,
@@ -95,4 +133,9 @@ class BiliDanmakuClient:
                 "Origin: https://live.bilibili.com",
             ]
         )
+
+        if self.debug_ws:
+            websocket.enableTrace(True)
+            logger.info("[WS] Trace 已启用（底层帧将打印到stdout）")
+
         self.ws.run_forever()

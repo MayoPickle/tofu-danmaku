@@ -69,7 +69,19 @@ def fetch_server_info(self):
     """通过 API 获取服务器地址和 token"""
     # 获取 buvid3 和 buvid4
     buvid_data = fetch_buvid()
-    logger.info(f"获取到 buvid3: {buvid_data['buvid3'][:20]}..., buvid4: {buvid_data['buvid4'][:20]}...")
+    try:
+        if getattr(self, 'debug_ws', False):
+            b3mask = (buvid_data['buvid3'][:8] + '...' if buvid_data['buvid3'] else '')
+            b4mask = (buvid_data['buvid4'][:8] + '...' if buvid_data['buvid4'] else '')
+            logger.info(f"[HTTP] buvid3={b3mask}, buvid4={b4mask}")
+    except Exception:
+        pass
+    # 保存到 self 供握手使用
+    try:
+        self.buvid3 = buvid_data.get('buvid3', '')
+        self.buvid4 = buvid_data.get('buvid4', '')
+    except Exception:
+        pass
     
     # 获取 WBI 密钥
     wbi_keys = fetch_wbi_keys()
@@ -89,6 +101,8 @@ def fetch_server_info(self):
         sub_key = extract_key_from_url(wbi_keys['sub_url'])
         wbi_sign = get_wbi_sign(params, img_key, sub_key)
         params['w_rid'] = wbi_sign
+        if getattr(self, 'debug_ws', False):
+            logger.info("[HTTP] 已添加WBI签名参数")
     
     url = "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo"
     headers = {
@@ -97,14 +111,17 @@ def fetch_server_info(self):
         "Origin": "https://live.bilibili.com"
     }
     
-    # 准备 cookies
-    cookies = {}
+    # 准备 cookies（优先使用用户传入的Cookie）
+    cookies = dict(self.cookies) if getattr(self, 'cookies', None) else {}
     if buvid_data['buvid3']:
-        cookies['buvid3'] = buvid_data['buvid3']
+        cookies.setdefault('buvid3', buvid_data['buvid3'])
     if buvid_data['buvid4']:
-        cookies['buvid4'] = buvid_data['buvid4']
+        cookies.setdefault('buvid4', buvid_data['buvid4'])
     
     try:
+        if getattr(self, 'debug_ws', False):
+            masked_cookie_keys = list(cookies.keys())
+            logger.info(f"[HTTP] 请求WS token：url={url}, headers=Referer/UA/Origin, cookies_keys={masked_cookie_keys}, params_keys={list(params.keys())}")
         response = requests.get(url, headers=headers, params=params, cookies=cookies)
         
         if response.status_code == 200:
@@ -121,7 +138,8 @@ def fetch_server_info(self):
                 
                 # 如果是 -352 错误，尝试不带签名的请求
                 if data['code'] == -352:
-                    logger.info("尝试不带 WBI 签名的请求...")
+                    if getattr(self, 'debug_ws', False):
+                        logger.info("[HTTP] 尝试无WBI签名请求")
                     params_no_wbi = {
                         "id": str(self.room_id),
                         "type": "0"

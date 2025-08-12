@@ -101,6 +101,9 @@ history.json
 config.json
 .danmaku_input_history
 
+# Local persisted cookies (do not commit secrets)
+bzcookies
+
 # System files
 .DS_Store
 Thumbs.db

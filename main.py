@@ -27,6 +27,9 @@ def get_arguments():
     parser.add_argument('--spider', action='store_true', help='启用直播间爬虫功能，监听STOP_LIVE_ROOM_LIST消息')
     parser.add_argument('--api', type=str, help='API服务器URL，例如 http://127.0.0.1:8081')
     parser.add_argument('--debug-events', action='store_true', help='调试模式：打印所有收到的事件（不做过滤）')
+    parser.add_argument('--cookie', type=str, help='B站 Cookie 字符串（例如 "SESSDATA=...; bili_jct=..."），用于携带登录态')
+    parser.add_argument('--login', action='store_true', help='扫码登录B站账号（成功后本次会话携带登录Cookie）；不传则游客')
+    parser.add_argument('--debug-ws', action='store_true', help='启用底层WebSocket和网络详细日志（会打印脱敏信息）')
     return parser.parse_args()
 
 def main():
@@ -50,8 +53,26 @@ def main():
         history_list = load_history()
         history_ids = [str(h["room_id"]) for h in history_list]
 
+        # 如需扫码登录，优先进行登录获取 Cookie
+        cookie_header = args.cookie
+        if args.login and not cookie_header:
+            from src.login_qrcode import login_with_qrcode
+            print("即将弹出二维码（终端打印），请使用B站App扫码登录……")
+            cookies, cookie_header = login_with_qrcode(
+                persist_path=os.path.join(os.getcwd(), 'bzcookies'),
+                timeout_seconds=180
+            )
+            print("登录完成，开始连接WS…")
+
         # 启动客户端
-        client = BiliDanmakuClient(room_id, spider=args.spider, api_base_url=args.api, debug_events=args.debug_events)
+        client = BiliDanmakuClient(
+            room_id,
+            spider=args.spider,
+            api_base_url=args.api,
+            debug_events=args.debug_events,
+            cookie=cookie_header,
+            debug_ws=args.debug_ws
+        )
         client.start()
         return  # 启动后直接退出函数
 
@@ -86,8 +107,26 @@ def main():
     if args.spider:
         print("🕷️ 直播间爬虫功能已启用")
         
+    # 如需扫码登录，优先进行登录获取 Cookie
+    cookie_header = args.cookie
+    if args.login and not cookie_header:
+        from src.login_qrcode import login_with_qrcode
+        print("即将弹出二维码（终端打印），请使用B站App扫码登录……")
+        cookies, cookie_header = login_with_qrcode(
+            persist_path=os.path.join(os.getcwd(), 'bzcookies'),
+            timeout_seconds=180
+        )
+        print("登录完成，开始连接WS…")
+
     # 启动客户端
-    client = BiliDanmakuClient(room_id, spider=args.spider, api_base_url=args.api, debug_events=args.debug_events)
+    client = BiliDanmakuClient(
+        room_id,
+        spider=args.spider,
+        api_base_url=args.api,
+        debug_events=args.debug_events,
+        cookie=cookie_header,
+        debug_ws=args.debug_ws
+    )
     client.start()
 
 
