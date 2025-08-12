@@ -535,11 +535,22 @@ class DanmakuHandler(EventHandler):
         
         logger.info(f"🤖 检测到chatbot关键词「{keywords_str}」：'{danmaku}'")
         
+        # 从原始消息中提取发送者名字（info[2][1]）
+        sender_name = None
+        try:
+            info = raw_message.get("info", [])
+            if isinstance(info, list) and len(info) > 2 and isinstance(info[2], list) and len(info[2]) > 1:
+                sender_name = info[2][1]
+        except Exception:
+            sender_name = None
+
         chatbot_payload = {
             "room_id": str(self.room_id),
             "message": danmaku,
             "raw_message": raw_message
         }
+        if sender_name:
+            chatbot_payload["uname"] = sender_name
         success, _ = self.api_client.post("chatbot", chatbot_payload)
         if success:
             logger.info(f"✅ 已将消息 '{danmaku}' 发送到 chatbot 接口")
