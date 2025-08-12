@@ -41,13 +41,13 @@ class DanmakuHandler(EventHandler):
             logger.info(f"[{username}] {comment}")
             
             # 关键词检测
-            self._keyword_detection(comment)
+            self._keyword_detection(comment, message)
             
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
-                self._send_to_setting(comment)
+                self._send_to_setting(comment, message)
     
-    def _keyword_detection(self, danmaku: str) -> None:
+    def _keyword_detection(self, danmaku: str, raw_message: Dict[str, Any]) -> None:
         """检测弹幕内容是否包含关键字并发送POST请求
         
         Args:
@@ -56,12 +56,13 @@ class DanmakuHandler(EventHandler):
         if any(keyword in danmaku for keyword in Constants.KEYWORDS):
             payload = {
                 "room_id": self.room_id,
-                "danmaku": danmaku
+                "danmaku": danmaku,
+                "raw_message": raw_message
             }
             if self.api_client.post(Constants.API_TICKET, payload):
                 logger.info(f"✅ 关键字检测成功：'{danmaku}' 已发送")
     
-    def _send_to_setting(self, danmaku: str) -> None:
+    def _send_to_setting(self, danmaku: str, raw_message: Dict[str, Any]) -> None:
         """将包含"记仇机器人"的弹幕发送到/setting接口
         
         Args:
@@ -69,7 +70,8 @@ class DanmakuHandler(EventHandler):
         """
         payload = {
             "room_id": self.room_id,
-            "danmaku": danmaku
+            "danmaku": danmaku,
+            "raw_message": raw_message
         }
         if self.api_client.post(Constants.API_SETTING, payload):
             logger.info(f"✅ 记仇机器人指令：'{danmaku}' 已发送")

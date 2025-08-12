@@ -492,7 +492,7 @@ class DanmakuHandler(EventHandler):
                 return
             
             # 关键词检测
-            self._keyword_detection(comment)
+            self._keyword_detection(comment, message)
             
             # chatbot关键词检测和点赞检测
             if any(keyword in comment for keyword in Constants.CHATBOT_KEYWORDS):
@@ -500,33 +500,34 @@ class DanmakuHandler(EventHandler):
                 
                 # 检查是否是豆豆+点赞组合，如果是则先处理sendlike
                 if "豆豆" in comment and "点赞" in comment:
-                    error_msg = self._sendlike_detection(comment)
+                    error_msg = self._sendlike_detection(comment, message)
                     if error_msg:
                         # 如果有错误信息，则将其附加到原始消息后
                         modified_comment = f"{comment} {error_msg}"
                 
                 # 然后再处理chatbot
-                self._chatbot_detection(modified_comment)
+                self._chatbot_detection(modified_comment, message)
                 
                 # 保卫模式检测（需要先激活豆豆）
-                self._guard_mode_detection(comment)
+                self._guard_mode_detection(comment, message)
             
             # 机器人指令检测
             if Constants.ROBOT_KEYWORD in comment:
-                self._send_to_setting(comment)
+                self._send_to_setting(comment, message)
     
-    def _keyword_detection(self, danmaku: str) -> None:
+    def _keyword_detection(self, danmaku: str, raw_message: Dict[str, Any]) -> None:
         """检测弹幕内容是否包含关键字并发送 POST 请求"""
         if any(keyword in danmaku for keyword in Constants.KEYWORDS):
             payload = {
                 "room_id": self.room_id,
-                "danmaku": danmaku
+                "danmaku": danmaku,
+                "raw_message": raw_message
             }
             success, _ = self.api_client.post("ticket", payload)
             if success:
                 logger.info(f"✅ 关键字检测成功：'{danmaku}' 已发送至 ticket 接口")
     
-    def _chatbot_detection(self, danmaku: str) -> None:
+    def _chatbot_detection(self, danmaku: str, raw_message: Dict[str, Any]) -> None:
         """检测弹幕内容是否包含chatbot关键词并发送到 chatbot 接口"""
         # 记录触发的关键词
         triggered_keywords = [keyword for keyword in Constants.CHATBOT_KEYWORDS if keyword in danmaku]
@@ -536,7 +537,8 @@ class DanmakuHandler(EventHandler):
         
         chatbot_payload = {
             "room_id": str(self.room_id),
-            "message": danmaku
+            "message": danmaku,
+            "raw_message": raw_message
         }
         success, _ = self.api_client.post("chatbot", chatbot_payload)
         if success:
@@ -544,7 +546,7 @@ class DanmakuHandler(EventHandler):
         else:
             logger.error(f"❌ 消息 '{danmaku}' 发送到 chatbot 接口失败")
     
-    def _sendlike_detection(self, danmaku: str) -> Optional[str]:
+    def _sendlike_detection(self, danmaku: str, raw_message: Dict[str, Any]) -> Optional[str]:
         """发送包含豆豆和点赞的消息到 sendlike 接口
         
         Returns:
@@ -554,7 +556,8 @@ class DanmakuHandler(EventHandler):
         
         sendlike_payload = {
             "room_id": str(self.room_id),
-            "message": danmaku
+            "message": danmaku,
+            "raw_message": raw_message
         }
         success, status_code = self.api_client.post("sendlike", sendlike_payload)
         
@@ -566,17 +569,18 @@ class DanmakuHandler(EventHandler):
             logger.error(f"❌ 消息 '{danmaku}' 发送到 sendlike 接口失败: {status_code}")
             return error_msg
     
-    def _send_to_setting(self, danmaku: str) -> None:
+    def _send_to_setting(self, danmaku: str, raw_message: Dict[str, Any]) -> None:
         """将包含"记仇机器人"的弹幕发送到 /setting 接口"""
         payload = {
             "room_id": self.room_id,
-            "danmaku": danmaku
+            "danmaku": danmaku,
+            "raw_message": raw_message
         }
         success, _ = self.api_client.post("setting", payload)
         if success:
             logger.info(f"✅ 记仇机器人指令：'{danmaku}' 已发送")
     
-    def _guard_mode_detection(self, danmaku: str) -> None:
+    def _guard_mode_detection(self, danmaku: str, raw_message: Dict[str, Any]) -> None:
         """检测弹幕内容是否包含保卫模式关键词并激活保卫模式"""
         for keyword in Constants.GUARD_MODE_KEYWORDS:
             if keyword in danmaku:
@@ -588,7 +592,8 @@ class DanmakuHandler(EventHandler):
                     payload = {
                         "room_id": self.room_id,
                         "danmaku": danmaku,
-                        "guard_keyword": keyword
+                        "guard_keyword": keyword,
+                        "raw_message": raw_message
                     }
                     api_success, _ = self.api_client.post("guard_mode", payload)
                     if api_success:
@@ -709,12 +714,13 @@ class MessageHandlerFactory:
 
 # B站消息解析器
 class BiliMessageParser:
-    def __init__(self, room_id: int, api_base_url: str = API_BASE_URL, spider: bool = False):
+    def __init__(self, room_id: int, api_base_url: str = API_BASE_URL, spider: bool = False, debug_events: bool = False):
         self.room_id = room_id
         self.api_client = APIClient(api_base_url)
         self.current_pk_handler = None
         # 确保将spider参数转换为布尔值
         self.spider_enabled = bool(spider)
+        self.debug_events = bool(debug_events)
         
         # 初始化处理器映射
         self.persistent_handlers = {}
@@ -737,6 +743,22 @@ class BiliMessageParser:
                 operation = int.from_bytes(data[offset + 8:offset + 12], "big")
                 body = data[offset + header_length:offset + packet_length]
 
+                # Debug模式：尽可能打印原始包信息
+                if self.debug_events:
+                    try:
+                        if operation == 5:
+                            # 业务消息包
+                            preview = body
+                            # 在压缩包情况下，body不是JSON，后续分支会解压；这里仅记录头部信息
+                            logger.debug(f"🧩 包: proto={protover}, op={operation}, len={packet_length}")
+                        elif operation == 3:
+                            popularity = int.from_bytes(body, "big")
+                            print(f"[DEBUG] 人气值: {popularity}", flush=True)
+                        else:
+                            logger.debug(f"🧩 包: proto={protover}, op={operation}, len={packet_length}")
+                    except Exception:
+                        pass
+
                 if protover == 2:
                     decompressed_data = zlib.decompress(body)
                     self.parse_message(decompressed_data)
@@ -746,9 +768,18 @@ class BiliMessageParser:
                 elif protover in (0, 1):
                     if operation == 5:
                         message = json.loads(body.decode("utf-8"))
+                        if self.debug_events:
+                            try:
+                                # 美化打印整条消息（不做任何过滤）
+                                print("[DEBUG] 事件:\n" + json.dumps(message, ensure_ascii=False, indent=2), flush=True)
+                            except Exception:
+                                # 兜底打印
+                                print(f"[DEBUG] 事件: {message}", flush=True)
                         self._handle_message(message)
                     elif operation == 3:
                         popularity = int.from_bytes(body, "big")
+                        if self.debug_events:
+                            print(f"[DEBUG] 人气值: {popularity}", flush=True)
                 offset += packet_length
         except Exception as e:
             logger.error(f"❌ 消息解析错误: {e}")

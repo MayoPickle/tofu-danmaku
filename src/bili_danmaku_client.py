@@ -25,7 +25,7 @@ logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
 
 
 class BiliDanmakuClient:
-    def __init__(self, room_id, spider=False, api_base_url=None):
+    def __init__(self, room_id, spider=False, api_base_url=None, debug_events: bool = False):
         self.room_id = room_id  # 房间号
         self.spider = spider    # 是否启用爬虫功能
         self.ws_url = None      # WebSocket 地址
@@ -33,10 +33,12 @@ class BiliDanmakuClient:
         self.ws = None
         self.heartbeat_interval = 30  # 心跳间隔时间（秒）
         self.api_base_url = api_base_url
+        self.debug_events = bool(debug_events)
         self.parser = BiliMessageParser(
             room_id,
             api_base_url=self.api_base_url or API_BASE_URL,
-            spider=bool(spider)
+            spider=bool(spider),
+            debug_events=self.debug_events
         )
         
         if spider:
