@@ -792,16 +792,150 @@ class GiftHandler(EventHandler):
             # 打印礼物信息，包含数量
             logger.info(f"🎁 礼物: [{uname}] 赠送 [{gift_name}] x{gift_num}, 价值: {price * gift_num}")
             
-            # 发送到 /money 接口
+            # 发送到 /money 接口，扩展更多有效字段
+            total_price = (price or 0) * (gift_num or 1)
             payload = {
                 "room_id": self.room_id,
                 "uid": uid,
                 "uname": uname,
                 "gift_id": gift_id,
                 "gift_name": gift_name,
-                "gift_num": gift_num,  # 添加礼物数量
-                "price": price
+                "gift_num": gift_num,
+                "price": price,
+                "total_price": total_price
             }
+
+            # 基础补充字段
+            coin_type = data.get("coin_type")
+            gift_type = data.get("giftType")
+            action = data.get("action")
+            if coin_type is not None:
+                payload["coin_type"] = coin_type
+            if gift_type is not None:
+                payload["gift_type"] = gift_type
+            if action:
+                payload["action"] = action
+
+            # 盲盒相关（盈亏计算）
+            blind_gift = data.get("blind_gift")
+            if isinstance(blind_gift, dict):
+                original_price = blind_gift.get("original_gift_price")
+                original_id = blind_gift.get("original_gift_id")
+                original_name = blind_gift.get("original_gift_name")
+                tip_price = blind_gift.get("gift_tip_price")
+                revealed_price = price
+                diff = None
+                if isinstance(original_price, (int, float)) and isinstance(revealed_price, (int, float)):
+                    diff = revealed_price - original_price
+                result = None
+                if isinstance(diff, (int, float)):
+                    if diff > 0:
+                        result = "profit"
+                    elif diff < 0:
+                        result = "loss"
+                    else:
+                        result = "even"
+                payload["is_blind_gift"] = True
+                payload["blind_box"] = {
+                    "original_gift_id": original_id,
+                    "original_gift_name": original_name,
+                    "original_gift_price": original_price,
+                    "revealed_gift_id": gift_id,
+                    "revealed_gift_name": gift_name,
+                    "revealed_gift_price": revealed_price,
+                    "gift_tip_price": tip_price,
+                    "diff": diff,
+                    "result": result
+                }
+            else:
+                payload["is_blind_gift"] = False
+
+            # 扩展发送者信息（头像、财富等级、守护、勋章、名称色）
+            sender_payload: Dict[str, Any] = {}
+            sender_uinfo = data.get("sender_uinfo") if isinstance(data, dict) else None
+            if isinstance(sender_uinfo, dict):
+                base = sender_uinfo.get("base") or {}
+                if isinstance(base, dict):
+                    face_url = base.get("face")
+                    name_color = base.get("name_color_str") or base.get("name_color")
+                    if face_url:
+                        sender_payload["face"] = face_url
+                    if name_color:
+                        sender_payload["name_color"] = name_color
+                # 财富等级
+                wealth = sender_uinfo.get("wealth")
+                if isinstance(wealth, dict) and "level" in wealth:
+                    sender_payload["wealth_level"] = wealth.get("level")
+                # 守护等级
+                guard = sender_uinfo.get("guard")
+                if isinstance(guard, dict) and "level" in guard:
+                    sender_payload["guard_level"] = guard.get("level")
+                # 勋章
+                medal = sender_uinfo.get("medal")
+                if isinstance(medal, dict):
+                    sender_payload["medal"] = {
+                        "name": medal.get("name"),
+                        "level": medal.get("level"),
+                        "is_light": medal.get("is_light"),
+                        "ruid": medal.get("ruid"),
+                        "guard_level": medal.get("guard_level"),
+                        "color": medal.get("color"),
+                        "color_start": medal.get("color_start"),
+                        "color_end": medal.get("color_end"),
+                        "color_border": medal.get("color_border")
+                    }
+            # 顶层 wealth_level/guard_level（有些事件会直接给出）
+            if isinstance(data.get("wealth_level"), int) and "wealth_level" not in sender_payload:
+                sender_payload["wealth_level"] = data.get("wealth_level")
+            if isinstance(data.get("guard_level"), int) and "guard_level" not in sender_payload:
+                sender_payload["guard_level"] = data.get("guard_level")
+            if sender_payload:
+                payload["sender"] = sender_payload
+
+            # 接收者信息（被赠送方）
+            receiver_payload: Dict[str, Any] = {}
+            receive_user_info = data.get("receive_user_info")
+            if isinstance(receive_user_info, dict):
+                if "uid" in receive_user_info:
+                    receiver_payload["uid"] = receive_user_info.get("uid")
+                if receive_user_info.get("uname"):
+                    receiver_payload["uname"] = receive_user_info.get("uname")
+            receiver_uinfo = data.get("receiver_uinfo")
+            if isinstance(receiver_uinfo, dict):
+                base = receiver_uinfo.get("base") or {}
+                if isinstance(base, dict):
+                    if base.get("name") and "uname" not in receiver_payload:
+                        receiver_payload["uname"] = base.get("name")
+                    if base.get("face"):
+                        receiver_payload["face"] = base.get("face")
+                if isinstance(receiver_uinfo.get("medal"), dict):
+                    medal = receiver_uinfo.get("medal")
+                    receiver_payload["medal"] = {
+                        "name": medal.get("name"),
+                        "level": medal.get("level"),
+                        "is_light": medal.get("is_light"),
+                        "ruid": medal.get("ruid"),
+                        "guard_level": medal.get("guard_level")
+                    }
+                if isinstance(receiver_uinfo.get("guard"), dict):
+                    receiver_payload["guard_level"] = receiver_uinfo["guard"].get("level")
+                if isinstance(receiver_uinfo.get("wealth"), dict):
+                    receiver_payload["wealth_level"] = receiver_uinfo["wealth"].get("level")
+                if isinstance(receiver_uinfo.get("uid"), int):
+                    receiver_payload["uid"] = receiver_uinfo.get("uid")
+            if receiver_payload:
+                payload["receiver"] = receiver_payload
+
+            # 事件辅助信息
+            for k in [
+                "timestamp", "tid", "rnd", "batch_combo_id", "combo_total_coin", "total_coin"
+            ]:
+                if k in data and data.get(k) is not None:
+                    payload[k] = data.get(k)
+            # combo_send 里的组合ID
+            combo_send = data.get("combo_send")
+            if isinstance(combo_send, dict) and combo_send.get("combo_id"):
+                payload["combo_id"] = combo_send.get("combo_id")
             
             success, _ = self.api_client.post("money", payload)
             if success:
