@@ -544,13 +544,158 @@ class DanmakuHandler(EventHandler):
         except Exception:
             sender_name = None
 
-        chatbot_payload = {
+        # 组装更结构化的 payload
+        uid = None
+        uname = sender_name
+        face_url = None
+        wealth_level = None
+        guard_level = None
+        is_captain = False
+        name_color = None
+        official_role = None
+        official_title = None
+        medal_payload: Dict[str, Any] = {}
+        ts = None
+        message_id = None
+
+        # 从 raw_message.info 中尽量提取有用信息（健壮判定，避免 KeyError）
+        try:
+            info = raw_message.get("info", [])
+            # 基础 uid/uname（info[2] 常见为 [uid, uname, ...]）
+            if isinstance(info, list) and len(info) > 2 and isinstance(info[2], list):
+                try:
+                    uid = info[2][0]
+                except Exception:
+                    uid = uid
+                try:
+                    if not uname:
+                        uname = info[2][1]
+                except Exception:
+                    pass
+
+            # 勋章（info[3] 通常是勋章数组）
+            if isinstance(info, list) and len(info) > 3 and isinstance(info[3], list):
+                m = info[3]
+                try:
+                    # 约定映射：
+                    # [level, medal_name, anchor_uname, anchor_uid, color, "", 0, color_start, color_end, color_border, 0, is_light, ruid]
+                    medal_payload_candidate: Dict[str, Any] = {}
+                    if len(m) >= 2 and isinstance(m[1], str):
+                        medal_payload_candidate["name"] = m[1]
+                    if len(m) >= 1:
+                        medal_payload_candidate["level"] = m[0]
+                    if len(m) >= 4:
+                        medal_payload_candidate["anchor_uid"] = m[3]
+                    if len(m) >= 3 and isinstance(m[2], str):
+                        medal_payload_candidate["anchor_uname"] = m[2]
+                    if len(m) >= 5:
+                        medal_payload_candidate["color"] = m[4]
+                    if len(m) >= 12:
+                        medal_payload_candidate["is_light"] = m[11]
+                    if len(m) >= 9:
+                        medal_payload_candidate["color_end"] = m[8]
+                    if len(m) >= 8:
+                        medal_payload_candidate["color_start"] = m[7]
+                    if len(m) >= 10:
+                        medal_payload_candidate["color_border"] = m[9]
+                    # ruid 可能在不同实现中索引不同，尽量兜底
+                    if len(m) >= 14:
+                        medal_payload_candidate["ruid"] = m[13]
+                    medal_payload = {k: v for k, v in medal_payload_candidate.items() if v is not None}
+                except Exception:
+                    pass
+
+            # 查找包含 user/extra 的头部对象（通常在 info[0] 列表中的一个 dict）
+            header_obj = None
+            if isinstance(info, list) and len(info) > 0 and isinstance(info[0], list):
+                for elem in info[0]:
+                    if isinstance(elem, dict):
+                        header_obj = elem
+                        break
+
+            if isinstance(header_obj, dict):
+                # 解析 extra（字符串 JSON），提取 id_str、content 等
+                extra_str = header_obj.get("extra")
+                if isinstance(extra_str, str):
+                    try:
+                        extra = json.loads(extra_str)
+                        message_id = extra.get("id_str") or message_id
+                        # content 可与 danmaku 一致，一并保留
+                    except Exception:
+                        pass
+
+                # 解析 user.base/wealth/guard 等
+                user_block = header_obj.get("user")
+                if isinstance(user_block, dict):
+                    base = user_block.get("base") or {}
+                    if isinstance(base, dict):
+                        face_url = base.get("face") or face_url
+                        name_color = base.get("name_color_str") or base.get("name_color") or name_color
+                        official = base.get("official_info") or {}
+                        if isinstance(official, dict):
+                            official_role = official.get("role")
+                            official_title = official.get("title")
+                    wealth = user_block.get("wealth")
+                    if isinstance(wealth, dict):
+                        wealth_level = wealth.get("level", wealth_level)
+                    guard = user_block.get("guard")
+                    if isinstance(guard, dict):
+                        guard_level = guard.get("level", guard_level)
+                    # 是否舰长：guard_level==3 可视为舰长
+                    is_captain = (guard_level == 3) or bool(user_block.get("guard_leader", {}).get("is_guard_leader"))
+
+            # 从尾部的 dict 提取 ts（时间戳）
+            if isinstance(info, list):
+                for part in reversed(info):
+                    if isinstance(part, dict) and "ts" in part:
+                        ts = part.get("ts")
+                        break
+        except Exception:
+            pass
+
+        # 仅添加非空字段，保持 payload 简洁
+        sender_payload: Dict[str, Any] = {}
+        if uid is not None:
+            sender_payload["uid"] = uid
+        if uname:
+            sender_payload["uname"] = uname
+        if face_url:
+            sender_payload["face"] = face_url
+        if wealth_level is not None:
+            sender_payload["wealth_level"] = wealth_level
+        if guard_level is not None:
+            sender_payload["guard_level"] = guard_level
+        if name_color is not None:
+            sender_payload["name_color"] = name_color
+        if official_role is not None:
+            sender_payload["official_role"] = official_role
+        if official_title:
+            sender_payload["official_title"] = official_title
+        sender_payload["is_captain"] = bool(is_captain)
+
+        meta_payload: Dict[str, Any] = {}
+        if ts is not None:
+            meta_payload["ts"] = ts
+        if message_id:
+            meta_payload["message_id"] = message_id
+        if triggered_keywords:
+            meta_payload["triggered_keywords"] = triggered_keywords
+
+        chatbot_payload: Dict[str, Any] = {
             "room_id": str(self.room_id),
             "message": danmaku,
             "raw_message": raw_message
         }
-        if sender_name:
-            chatbot_payload["uname"] = sender_name
+        # 兼容旧字段：顶层仍保留 uname
+        if uname:
+            chatbot_payload["uname"] = uname
+        if sender_payload:
+            chatbot_payload["sender"] = sender_payload
+        if medal_payload:
+            chatbot_payload["medal"] = medal_payload
+        if meta_payload:
+            chatbot_payload["meta"] = meta_payload
+
         success, _ = self.api_client.post("chatbot", chatbot_payload)
         if success:
             logger.info(f"✅ 已将消息 '{danmaku}' 发送到 chatbot 接口")
