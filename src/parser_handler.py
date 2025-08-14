@@ -936,6 +936,38 @@ class GiftHandler(EventHandler):
             combo_send = data.get("combo_send")
             if isinstance(combo_send, dict) and combo_send.get("combo_id"):
                 payload["combo_id"] = combo_send.get("combo_id")
+
+            # 礼物动画与图标等可视资源
+            gift_info = data.get("gift_info")
+            if isinstance(gift_info, dict):
+                gift_assets: Dict[str, Any] = {}
+                for key in ["effect_id", "gif", "webp", "img_basic", "has_imaged_gift"]:
+                    if key in gift_info:
+                        gift_assets[key] = gift_info.get(key)
+                if gift_assets:
+                    payload["gift_assets"] = gift_assets
+
+            # 其他视觉/动效标志与资源
+            if data.get("tag_image"):
+                payload["tag_image"] = data.get("tag_image")
+            for k in ["effect", "effect_block", "svga_block", "combo_resources_id"]:
+                if k in data and data.get(k) is not None:
+                    payload[k] = data.get(k)
+            # 面部特效（v2结构）
+            face_effect_v2 = data.get("face_effect_v2")
+            if isinstance(face_effect_v2, dict):
+                payload["face_effect_v2"] = {
+                    "id": face_effect_v2.get("id"),
+                    "type": face_effect_v2.get("type")
+                }
+            # 旧的 face_effect_* 字段
+            if "face_effect_id" in data:
+                payload["face_effect_id"] = data.get("face_effect_id")
+            if "face_effect_type" in data:
+                payload["face_effect_type"] = data.get("face_effect_type")
+            # 标签类资源
+            if isinstance(data.get("gift_tag"), list):
+                payload["gift_tag"] = data.get("gift_tag")
             
             success, _ = self.api_client.post("money", payload)
             if success:
