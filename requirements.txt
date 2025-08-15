@@ -1,4 +1,5 @@
 brotli
 websocket-client
 requests
-
+qrcode
+pillow
