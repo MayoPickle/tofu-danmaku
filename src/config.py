@@ -15,7 +15,7 @@ API_BASE_URL = "http://127.0.0.1:8081"
 # 系统参数
 #############################################
 # API请求超时时间(秒)
-DEFAULT_TIMEOUT = 3
+DEFAULT_TIMEOUT = 10
 
 # API令牌，用于验证请求的合法性
 DEFAULT_API_TOKEN = "8096"

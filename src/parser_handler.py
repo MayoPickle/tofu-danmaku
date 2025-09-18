@@ -982,6 +982,68 @@ class GiftHandler(EventHandler):
         pass
 
 
+# 上舰（大航海购买/续费）处理器
+class GuardBuyHandler(EventHandler):
+    def __init__(self, room_id: int, api_client: APIClient):
+        self.room_id = room_id
+        self.api_client = api_client
+
+    def handle(self, message: Dict[str, Any]) -> None:
+        """处理上舰相关事件（如 GUARD_BUY / USER_TOAST_MSG），上报到 /guard 接口"""
+        try:
+            uid = None
+            username = None
+            guard_level = None
+            num = None
+            price = None
+            gift_id = None
+            gift_name = None
+            start_time = None
+            end_time = None
+
+            data = message.get("data", {}) if isinstance(message, dict) else {}
+
+            if isinstance(data, dict):
+                # 常见字段（GUARD_BUY）
+                uid = data.get("uid") or data.get("user_id")
+                username = data.get("username") or data.get("user_name") or data.get("uname")
+                guard_level = data.get("guard_level") or data.get("role_level")
+                num = data.get("num") or data.get("count")
+                price = data.get("price")
+                gift_id = data.get("gift_id")
+                gift_name = data.get("gift_name") or data.get("role_name")
+                start_time = data.get("start_time")
+                end_time = data.get("end_time")
+
+                # USER_TOAST_MSG 有时字段在 data.toast_msg/其他位置，尽量兜底
+                if not gift_name and isinstance(data.get("toast_msg"), str):
+                    gift_name = data.get("toast_msg")
+
+            payload = {
+                "room_id": self.room_id,
+                "uid": uid,
+                "username": username,
+                "guard_level": guard_level,
+                "count": num,
+                "price": price,
+                "gift_id": gift_id,
+                "gift_name": gift_name,
+                "start_time": start_time,
+                "end_time": end_time,
+                "raw_message": message
+            }
+
+            success, _ = self.api_client.post("guard", payload)
+            if success:
+                logger.info(f"✅ 上报上舰事件成功：uid={uid or '-'} username={username or '-'} level={guard_level} count={num}")
+            else:
+                logger.error("❌ 上报上舰事件失败 (/guard)")
+        except Exception as e:
+            logger.error(f"❌ 处理上舰事件时发生错误: {e}")
+
+    def stop(self) -> None:
+        pass
+
 # 进场特效（用户进入）处理器
 class EntryEffectHandler(EventHandler):
     def __init__(self, room_id: int, api_client: APIClient):
@@ -1120,6 +1182,8 @@ class MessageHandlerFactory:
             "SEND_GIFT": GiftHandler,
             "STOP_LIVE_ROOM_LIST": LiveRoomListHandler,
             "ENTRY_EFFECT": EntryEffectHandler,
+            "GUARD_BUY": GuardBuyHandler,
+            "USER_TOAST_MSG": GuardBuyHandler,
         }
         
         handler_class = handlers.get(cmd)
