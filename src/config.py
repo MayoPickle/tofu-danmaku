@@ -30,7 +30,7 @@ KEYWORDS = ["观测站"]
 ROBOT_KEYWORD = "记仇机器人"
 
 # 触发chatbot接口的关键词列表
-CHATBOT_KEYWORDS = ["鱼豆腐", "豆豆"]
+CHATBOT_KEYWORDS = ["豆豆"]
 
 # 被屏蔽的用户名前缀列表，以这些前缀开头的用户发言将被忽略
 BLOCKED_USERNAME_PREFIXES = ["观"]

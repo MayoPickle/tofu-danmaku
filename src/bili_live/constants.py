@@ -13,7 +13,7 @@ class Constants:
     DEFAULT_API_URL = "http://127.0.0.1:8081"
     
     # 弹幕关键词
-    KEYWORDS = ["观测站", "鱼豆腐"]
+    KEYWORDS = ["观测站"]
     ROBOT_KEYWORD = "记仇机器人"
     
     # PK 相关常量
