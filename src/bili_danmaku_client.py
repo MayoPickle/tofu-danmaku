@@ -26,7 +26,7 @@ logging.getLogger().handlers[0].flush = lambda: sys.stdout.flush()
 
 
 class BiliDanmakuClient:
-    def __init__(self, room_id, spider=False, api_base_url=None, debug_events: bool = False, cookie: Optional[str] = None, debug_ws: bool = False):
+    def __init__(self, room_id, spider=False, api_base_url=None, debug_events: bool = False, cookie: Optional[str] = None, debug_ws: bool = False, only_gift_guard: bool = False):
         self.room_id = room_id  # 房间号
         self.spider = spider    # 是否启用爬虫功能
         self.ws_url = None      # WebSocket 地址
@@ -38,6 +38,7 @@ class BiliDanmakuClient:
         self.cookie_str = cookie
         self.cookies = self._parse_cookie_string(cookie) if cookie else {}
         self.debug_ws = bool(debug_ws)
+        self.only_gift_guard = bool(only_gift_guard)
         # 从 Cookie 中提取用户UID（如有）
         try:
             self.user_uid = int(self.cookies.get('DedeUserID', '0')) if self.cookies else 0
@@ -52,7 +53,8 @@ class BiliDanmakuClient:
             api_base_url=self.api_base_url or API_BASE_URL,
             spider=bool(spider),
             debug_events=self.debug_events,
-            on_authenticated=self.on_auth_success
+            on_authenticated=self.on_auth_success,
+            only_gift_guard=self.only_gift_guard
         )
         
         if spider:

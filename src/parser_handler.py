@@ -1194,7 +1194,7 @@ class MessageHandlerFactory:
 
 # B站消息解析器
 class BiliMessageParser:
-    def __init__(self, room_id: int, api_base_url: str = API_BASE_URL, spider: bool = False, debug_events: bool = False, on_authenticated=None):
+    def __init__(self, room_id: int, api_base_url: str = API_BASE_URL, spider: bool = False, debug_events: bool = False, on_authenticated=None, only_gift_guard: bool = False):
         self.room_id = room_id
         self.api_client = APIClient(api_base_url)
         self.current_pk_handler = None
@@ -1202,6 +1202,7 @@ class BiliMessageParser:
         self.spider_enabled = bool(spider)
         self.debug_events = bool(debug_events)
         self.on_authenticated = on_authenticated
+        self.only_gift_guard = bool(only_gift_guard)
         
         # 初始化处理器映射
         self.persistent_handlers = {}
@@ -1212,6 +1213,9 @@ class BiliMessageParser:
             logger.info("🕷️ 直播间爬虫功能已启用，将监听 STOP_LIVE_ROOM_LIST 消息")
         else:
             logger.info("ℹ️ 直播间爬虫功能未启用")
+        
+        if self.only_gift_guard:
+            logger.info("🎯 仅监听并处理 礼物与上舰 相关事件（SEND_GIFT、GUARD_BUY、USER_TOAST_MSG）")
     
     def parse_message(self, data: bytes) -> None:
         """解析服务器返回的消息"""
@@ -1302,6 +1306,14 @@ class BiliMessageParser:
                         logger.debug(f"收到STOP_LIVE_ROOM_LIST消息，但爬虫功能未启用，忽略此消息")
                 # 处理其他消息
                 else:
+                    # 如果启用 only_gift_guard，则仅处理礼物与上舰相关事件
+                    if self.only_gift_guard:
+                        allowed_cmds = {"SEND_GIFT", "GUARD_BUY", "USER_TOAST_MSG"}
+                        if cmd not in allowed_cmds:
+                            # 在调试模式下打印被过滤的事件类型
+                            if self.debug_events:
+                                logger.debug(f"[过滤] 已启用 only_gift_guard，忽略事件: {cmd}")
+                            return
                     # 检查是否有持久化处理器
                     handler = self.persistent_handlers.get(cmd)
                     

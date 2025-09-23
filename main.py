@@ -30,6 +30,7 @@ def get_arguments():
     parser.add_argument('--cookie', type=str, help='B站 Cookie 字符串（例如 "SESSDATA=...; bili_jct=..."），用于携带登录态')
     parser.add_argument('--login', action='store_true', help='扫码登录B站账号（成功后本次会话携带登录Cookie）；不传则游客')
     parser.add_argument('--debug-ws', action='store_true', help='启用底层WebSocket和网络详细日志（会打印脱敏信息）')
+    parser.add_argument('--only-gift-guard', action='store_true', help='仅监听礼物投喂与上舰相关事件（SEND_GIFT、GUARD_BUY、USER_TOAST_MSG），并进行上报')
     return parser.parse_args()
 
 def main():
@@ -71,7 +72,8 @@ def main():
             api_base_url=args.api,
             debug_events=args.debug_events,
             cookie=cookie_header,
-            debug_ws=args.debug_ws
+            debug_ws=args.debug_ws,
+            only_gift_guard=args.only_gift_guard
         )
         client.start()
         return  # 启动后直接退出函数
@@ -125,7 +127,8 @@ def main():
         api_base_url=args.api,
         debug_events=args.debug_events,
         cookie=cookie_header,
-        debug_ws=args.debug_ws
+        debug_ws=args.debug_ws,
+        only_gift_guard=args.only_gift_guard
     )
     client.start()
 
